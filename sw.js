@@ -1,4 +1,4 @@
-const DEPLOY_ID = 'db859f5';
+const DEPLOY_ID = 'da1f7aa';
 const CACHE = `tiger-scribe-${DEPLOY_ID}`;
 
 /** Single source of truth for CSP — injected as HTTP header only (not meta). */
@@ -46,19 +46,8 @@ const SHELL = [
   './icons/icon-512.png',
 ];
 
-/** Safari/WebKit does not support COEP credentialless — require-corp enables SharedArrayBuffer on iOS. */
-function isWebKitSafari(ua = '') {
-  return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|EdgiOS|FxiOS/i.test(ua);
-}
-
-function getCoiHeaders(request) {
-  const ua = request?.headers?.get?.('User-Agent') || '';
-  return {
-    'Cross-Origin-Opener-Policy': 'same-origin',
-    'Cross-Origin-Embedder-Policy': isWebKitSafari(ua) ? 'require-corp' : 'credentialless',
-    'Cross-Origin-Resource-Policy': 'cross-origin',
-  };
-}
+/** Default COEP mode — credentialless first (coi-serviceworker pattern). */
+let coepCredentialless = true;
 
 const META_CSP_RE = /<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>\s*/gi;
 
@@ -73,29 +62,45 @@ function isHtmlResponse(response) {
   return type.includes('text/html');
 }
 
-/** Strip legacy meta CSP so it cannot conflict with the HTTP header policy. */
-async function buildHtmlResponse(request, response) {
-  let text = await response.text();
-  text = text.replace(META_CSP_RE, '');
-  const headers = new Headers();
-  headers.set('Content-Type', 'text/html; charset=utf-8');
-  for (const [key, value] of Object.entries(getCoiHeaders(request))) {
+function coiHeaders() {
+  const headers = {
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': coepCredentialless ? 'credentialless' : 'require-corp',
+    'Origin-Agent-Cluster': '?1',
+  };
+  if (!coepCredentialless) {
+    headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+  }
+  return headers;
+}
+
+async function injectCoiHeaders(request, response) {
+  if (response.status === 0) return response;
+
+  const isHtml = isHtmlResponse(response) || request.mode === 'navigate';
+  let body = response.body;
+
+  if (isHtml) {
+    let text = await response.text();
+    text = text.replace(META_CSP_RE, '');
+    body = text;
+  }
+
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(coiHeaders())) {
     headers.set(key, value);
   }
-  headers.set('Content-Security-Policy', CSP);
-  headers.set('Cache-Control', 'no-cache');
-  return new Response(text, {
+  if (isHtml) {
+    headers.set('Content-Type', 'text/html; charset=utf-8');
+    headers.set('Content-Security-Policy', CSP);
+    headers.set('Cache-Control', 'no-cache');
+  }
+
+  return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers,
   });
-}
-
-async function finalizeResponse(request, response) {
-  if (isHtmlResponse(response) || request.mode === 'navigate') {
-    return buildHtmlResponse(request, response);
-  }
-  return response;
 }
 
 async function cacheResponse(request, response) {
@@ -107,7 +112,7 @@ async function respondFromNetworkFirst(request) {
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const final = await finalizeResponse(request, response);
+      const final = await injectCoiHeaders(request, response);
       await cacheResponse(request, final);
       return final;
     }
@@ -116,21 +121,19 @@ async function respondFromNetworkFirst(request) {
   }
   const cached = await caches.match(request);
   if (!cached) throw new Error('Offline');
-  return finalizeResponse(request, cached);
+  return injectCoiHeaders(request, cached);
 }
 
 async function respondCacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) {
-    return isHtmlResponse(cached) || request.mode === 'navigate'
-      ? finalizeResponse(request, cached)
-      : cached;
+    return injectCoiHeaders(request, cached);
   }
 
   const response = await fetch(request);
   if (!response?.ok) return response;
 
-  const final = await finalizeResponse(request, response);
+  const final = await injectCoiHeaders(request, response);
   await cacheResponse(request, final);
   return final;
 }
@@ -159,17 +162,33 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'coepCredentialless') {
+    coepCredentialless = event.data.value !== false;
+  }
+});
+
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const request = event.request;
+  if (request.cache === 'only-if-cached' && request.mode !== 'same-origin') {
+    return;
+  }
+
+  const url = new URL(request.url);
   if (url.hostname.includes('cdn.jsdelivr.net') && url.pathname.includes('transformers')) {
     return;
   }
-  if (event.request.method !== 'GET') return;
+  if (request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
+  const fetchRequest =
+    coepCredentialless && request.mode === 'no-cors'
+      ? new Request(request, { credentials: 'omit' })
+      : request;
+
   event.respondWith(
-    isHtmlRequest(event.request, url)
-      ? respondFromNetworkFirst(event.request)
-      : respondCacheFirst(event.request)
+    isHtmlRequest(fetchRequest, url)
+      ? respondFromNetworkFirst(fetchRequest)
+      : respondCacheFirst(fetchRequest)
   );
 });
