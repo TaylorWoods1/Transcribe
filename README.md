@@ -1,5 +1,8 @@
 # Lucy Scribe
 
+> **Live app:** https://taylorwoods1.github.io/Transcribe/  
+> (Must include `/Transcribe/` — the root `taylorwoods1.github.io` URL will show “site not found”.)
+
 A local-first, vanilla Progressive Web App for clinical encounter transcription, speaker diarization, SOAP note generation, and action-item extraction. No build step, no framework, no backend required for core functionality.
 
 ## Features
@@ -32,13 +35,15 @@ A local-first, vanilla Progressive Web App for clinical encounter transcription,
 
 ## Live app (GitHub Pages)
 
-Once deployed, the app is available at:
+**Correct URL (copy exactly):**
 
-**https://taylorwoods1.github.io/Transcribe/**
+### https://taylorwoods1.github.io/Transcribe/
+
+> ⚠️ `https://taylorwoods1.github.io/` alone will **not** work — that’s your account root, not this project. The repo name `Transcribe` is part of the path (capital **T**).
 
 ### Install on iPhone / iPad (Add to Home Screen)
 
-1. Open **Safari** and go to `https://taylorwoods1.github.io/Transcribe/`
+1. Open **Safari** and go to **https://taylorwoods1.github.io/Transcribe/**
 2. Tap the **Share** button (square with arrow)
 3. Scroll down and tap **Add to Home Screen**
 4. Name it **Lucy** and tap **Add**
@@ -125,16 +130,11 @@ icons/icon.svg
 
 ## Deployment
 
-Pushes to `main` automatically deploy to GitHub Pages via `peaceiris/actions-gh-pages@v4` (publishes the `gh-pages` branch).
+Pushes to `main` deploy to the **`gh-pages`** branch via GitHub Actions (`peaceiris/actions-gh-pages@v4`).
 
-**One-time GitHub setup:**
+**GitHub Pages setup:** Settings → Pages → Source: **Deploy from a branch** → branch **`gh-pages`** → folder **`/ (root)`**.
 
-1. Open your repo → **Settings** → **Pages**
-2. Under **Build and deployment**, set **Source** to **Deploy from a branch**
-3. Choose branch **`gh-pages`** and folder **`/ (root)`**
-4. Save — the site will be live at `https://taylorwoods1.github.io/Transcribe/` within a minute or two
-
-Or use **GitHub Actions** as the Pages source if your repo offers that option (either works after the first deploy creates `gh-pages`).
+**Live URL:** https://taylorwoods1.github.io/Transcribe/
 
 ## Disclaimer
 
