@@ -60,8 +60,9 @@ js/ui.js                               DOM rendering
 
 ## Service worker
 
-- Cache name: `tiger-scribe-v12` (bump on breaking shell changes)
-- Injects **COOP/COEP** headers for `SharedArrayBuffer` / multi-thread WASM
+- Cache name: `tiger-scribe-v14` (bump on breaking shell changes)
+- Injects **COOP/COEP** and **Content-Security-Policy** headers on HTML (required for Safari WASM)
+- **Network-first** for HTML so CSP/security updates are not stuck behind cache
 - Does **not** cache Whisper models from CDN
 
 ## Testing

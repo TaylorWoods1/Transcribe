@@ -209,7 +209,7 @@ export async function loadWhisperPipeline(onProgress) {
       pipelinePromise = null;
       pipelineInstance = null;
       loadProgress = { status: 'error', progress: 0 };
-      writeStoredStatus({ state: 'error', error: err.message || 'Download failed' });
+      writeStoredStatus({ state: 'error', error: err.message || 'Download failed', downloadedAt: null });
       notifyStatusListeners();
       throw err;
     }

@@ -1,4 +1,16 @@
-const CACHE = 'tiger-scribe-v13';
+const CACHE = 'tiger-scribe-v14';
+
+/** Keep in sync with index.html meta CSP. Injected as HTTP header for Safari WASM. */
+const CSP =
+  "default-src 'self'; " +
+  "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'unsafe-eval'; " +
+  "connect-src 'self' https:; " +
+  "img-src 'self' data: blob:; " +
+  "media-src 'self' blob:; " +
+  "style-src 'self' 'unsafe-inline'; " +
+  "worker-src 'self' blob: https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'unsafe-eval'; " +
+  "object-src 'none'; base-uri 'self'; form-action 'self';";
+
 const SHELL = [
   './',
   './index.html',
@@ -37,23 +49,65 @@ const COI_HEADERS = {
   'Cross-Origin-Embedder-Policy': 'credentialless',
 };
 
-function shouldApplyCoi(request, response) {
+function isHtmlRequest(request, url) {
+  if (request.mode === 'navigate') return true;
+  const path = url.pathname;
+  return path.endsWith('.html') || path.endsWith('/');
+}
+
+function shouldApplySecurityHeaders(request, response) {
   if (request.mode === 'navigate') return true;
   const type = response.headers.get('content-type') || '';
   return type.includes('text/html');
 }
 
-async function withCoiHeaders(response) {
+async function withSecurityHeaders(response) {
   const body = await response.blob();
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(COI_HEADERS)) {
     headers.set(key, value);
   }
+  headers.set('Content-Security-Policy', CSP);
   return new Response(body, {
     status: response.status,
     statusText: response.statusText,
     headers,
   });
+}
+
+async function cacheResponse(request, response) {
+  const clone = response.clone();
+  const cache = await caches.open(CACHE);
+  await cache.put(request, clone);
+}
+
+async function respondFromNetworkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cacheResponse(request, response);
+      return shouldApplySecurityHeaders(request, response)
+        ? withSecurityHeaders(response)
+        : response;
+    }
+  } catch {
+    /* offline — fall back to cache */
+  }
+  const cached = await caches.match(request);
+  if (!cached) throw new Error('Offline');
+  return shouldApplySecurityHeaders(request, cached) ? withSecurityHeaders(cached) : cached;
+}
+
+async function respondCacheFirst(request, url) {
+  const cached = await caches.match(request);
+  const response = cached || (await fetch(request));
+  if (!response?.ok || url.origin !== self.location.origin) return response;
+
+  if (!cached && response.ok) {
+    await cacheResponse(request, response);
+  }
+
+  return shouldApplySecurityHeaders(request, response) ? withSecurityHeaders(response) : response;
 }
 
 self.addEventListener('install', (event) => {
@@ -76,21 +130,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (event.request.method !== 'GET') return;
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then(async (cached) => {
-      const response = cached || (await fetch(event.request));
-      if (!response?.ok || url.origin !== self.location.origin) return response;
-
-      if (!cached && response.ok) {
-        const clone = response.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, clone));
-      }
-
-      if (shouldApplyCoi(event.request, response)) {
-        return withCoiHeaders(response);
-      }
-      return response;
-    })
+    isHtmlRequest(event.request, url)
+      ? respondFromNetworkFirst(event.request)
+      : respondCacheFirst(event.request, url)
   );
 });
