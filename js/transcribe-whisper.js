@@ -3,7 +3,7 @@
  * Includes explicit download + status tracking for Settings UI.
  */
 import { CONFIG } from '../config.js';
-import { getRuntimeCapabilities, probeWebGPU } from './runtime.js';
+import { getRuntimeCapabilities, probeWebGPU, getLiveCaptureTiming } from './runtime.js';
 import {
   STORAGE_KEYS,
 } from './lib/storage-keys.js';
@@ -243,9 +243,10 @@ export function isWhisperCached() {
 async function runPipeline(pipe, blob, { language, live = false } = {}) {
   const url = URL.createObjectURL(blob);
   try {
+    const timing = live ? getLiveCaptureTiming() : null;
     const opts = {
-      chunk_length_s: live ? CONFIG.whisperLiveChunkLengthS : 30,
-      stride_length_s: live ? CONFIG.whisperLiveStrideS : 5,
+      chunk_length_s: live ? timing.whisperChunkLengthS : 30,
+      stride_length_s: live ? timing.whisperStrideS : 5,
       language: language?.split('-')[0] || 'en',
       return_timestamps: true,
     };

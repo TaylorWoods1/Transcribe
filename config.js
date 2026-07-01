@@ -35,6 +35,11 @@ export const CONFIG = {
   /** Whisper live-chunk inference (shorter = faster per slice) */
   whisperLiveChunkLengthS: 12,
   whisperLiveStrideS: 2,
+  /** Tighter live slices when multi-thread WASM is unavailable (single-thread fallback) */
+  whisperLiveChunkLengthSingleThreadS: 6,
+  whisperLiveStrideSingleThreadS: 1,
+  liveChunkIntervalMsSingleThread: 1800,
+  liveChunkMinMsSingleThread: 900,
   whisperWasmThreads: 4,
 
   /** Red-flag keywords (Tier 3 stretch, included) */

@@ -44,10 +44,19 @@ const SHELL = [
   './icons/icon-512.png',
 ];
 
-const COI_HEADERS = {
-  'Cross-Origin-Opener-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'credentialless',
-};
+/** Safari/WebKit does not support COEP credentialless — require-corp enables SharedArrayBuffer on iOS. */
+function isWebKitSafari(ua = '') {
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|EdgiOS|FxiOS/i.test(ua);
+}
+
+function getCoiHeaders(request) {
+  const ua = request?.headers?.get?.('User-Agent') || '';
+  return {
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': isWebKitSafari(ua) ? 'require-corp' : 'credentialless',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+  };
+}
 
 const META_CSP_RE = /<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>\s*/gi;
 
@@ -63,12 +72,12 @@ function isHtmlResponse(response) {
 }
 
 /** Strip legacy meta CSP so it cannot conflict with the HTTP header policy. */
-async function buildHtmlResponse(response) {
+async function buildHtmlResponse(request, response) {
   let text = await response.text();
   text = text.replace(META_CSP_RE, '');
   const headers = new Headers();
   headers.set('Content-Type', 'text/html; charset=utf-8');
-  for (const [key, value] of Object.entries(COI_HEADERS)) {
+  for (const [key, value] of Object.entries(getCoiHeaders(request))) {
     headers.set(key, value);
   }
   headers.set('Content-Security-Policy', CSP);
@@ -79,10 +88,10 @@ async function buildHtmlResponse(response) {
   });
 }
 
-async function withCoiHeaders(response) {
+async function withCoiHeaders(request, response) {
   const body = await response.blob();
   const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(COI_HEADERS)) {
+  for (const [key, value] of Object.entries(getCoiHeaders(request))) {
     headers.set(key, value);
   }
   return new Response(body, {
@@ -94,9 +103,9 @@ async function withCoiHeaders(response) {
 
 async function finalizeResponse(request, response) {
   if (!isHtmlResponse(response) && request.mode !== 'navigate') {
-    return withCoiHeaders(response);
+    return withCoiHeaders(request, response);
   }
-  return buildHtmlResponse(response);
+  return buildHtmlResponse(request, response);
 }
 
 async function cacheResponse(request, response) {
@@ -122,15 +131,18 @@ async function respondFromNetworkFirst(request) {
 
 async function respondCacheFirst(request) {
   const cached = await caches.match(request);
-  const response = cached || (await fetch(request));
+  if (cached) {
+    return withCoiHeaders(request, cached);
+  }
+
+  const response = await fetch(request);
   if (!response?.ok) return response;
 
-  if (!cached) {
-    const final = isHtmlResponse(response) ? await finalizeResponse(request, response) : await withCoiHeaders(response);
-    await cacheResponse(request, final);
-    return final;
-  }
-  return cached;
+  const final = isHtmlResponse(response)
+    ? await finalizeResponse(request, response)
+    : await withCoiHeaders(request, response);
+  await cacheResponse(request, final);
+  return final;
 }
 
 self.addEventListener('install', (event) => {

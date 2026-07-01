@@ -29,7 +29,7 @@ test.describe('Tiger PWA smoke', () => {
   test.beforeEach(async ({ page }) => {
     await mockStandalonePwa(page);
     await page.addInitScript(() => {
-      sessionStorage.setItem('tiger-coi-reload', '1');
+      sessionStorage.setItem('tiger-coi-reload', '3');
       localStorage.setItem('tiger-deploy-id', 'dev');
     });
   });
@@ -96,7 +96,7 @@ test.describe('Install gate', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      sessionStorage.setItem('tiger-coi-reload', '1');
+      sessionStorage.setItem('tiger-coi-reload', '3');
       localStorage.setItem('tiger-deploy-id', 'dev');
     });
   });

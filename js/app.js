@@ -32,7 +32,7 @@ import { extractActions, toggleAction, deleteAction, addAction } from './actions
 import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
-import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
+import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml, getLiveCaptureTiming } from './runtime.js';
 import { enforcePwaInstall } from './install-prompt.js';
 import {
   STORAGE_KEYS,
@@ -557,7 +557,8 @@ async function startRecording() {
   try {
     const settings = getAppSettings();
     useChunkedLive = !isLiveTranscriptionSupported() && settings.enhancedTranscription;
-    const chunkMs = useChunkedLive ? CONFIG.liveChunkIntervalMs : 1000;
+    const timing = getLiveCaptureTiming(getRuntimeCapabilities());
+    const chunkMs = useChunkedLive ? timing.chunkIntervalMs : 1000;
 
     if (useChunkedLive) {
       liveStatus = createLiveStatus({ phase: 'loading', detail: 'Preparing Whisper…' });
@@ -1051,6 +1052,11 @@ function renderSettings() {
   });
 
   whisperStatusUnsubscribe = subscribeWhisperStatus(() => updateWhisperStatusPanel());
+
+  el.querySelector('#btn-coi-reload')?.addEventListener('click', () => {
+    sessionStorage.removeItem(STORAGE_KEYS.COI_RELOAD);
+    window.location.reload();
+  });
 }
 
 function setupTabs() {
@@ -1121,17 +1127,44 @@ async function migrateDeployRelease() {
   return true;
 }
 
-async function ensureCrossOriginIsolation() {
-  if (
-    'serviceWorker' in navigator &&
-    !window.crossOriginIsolated &&
-    !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)
-  ) {
-    sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
-    window.location.reload();
+async function waitForServiceWorkerControl(timeoutMs = 10000) {
+  if (!('serviceWorker' in navigator)) return false;
+  try {
+    await navigator.serviceWorker.ready;
+  } catch {
     return false;
   }
-  return true;
+  if (navigator.serviceWorker.controller) return true;
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+      resolve(!!navigator.serviceWorker.controller);
+    }, timeoutMs);
+
+    const onChange = () => {
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener('controllerchange', onChange);
+      resolve(true);
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', onChange);
+  });
+}
+
+async function ensureCrossOriginIsolation() {
+  if (!('serviceWorker' in navigator)) return true;
+
+  if (window.crossOriginIsolated) {
+    sessionStorage.removeItem(STORAGE_KEYS.COI_RELOAD);
+    return true;
+  }
+
+  const attempts = parseInt(sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD) || '0', 10);
+  if (attempts >= 3) return true;
+
+  sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, String(attempts + 1));
+  window.location.reload();
+  return false;
 }
 
 async function registerServiceWorker() {
@@ -1167,9 +1200,10 @@ async function registerServiceWorker() {
 async function init() {
   migrateStorageKeys();
   if (await migrateDeployRelease()) return;
+  await registerServiceWorker();
+  await waitForServiceWorkerControl();
   if (!(await ensureCrossOriginIsolation())) return;
   loadTheme();
-  await registerServiceWorker();
 
   if (enforcePwaInstall(getRuntimeCapabilities())) return;
 
