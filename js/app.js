@@ -121,7 +121,13 @@ function handleBack() {
 
 function getAppSettings() {
   try {
-    return { ...getDefaultAppSettings(), ...JSON.parse(localStorage.getItem(APP_SETTINGS_KEY) || '{}') };
+    const saved = JSON.parse(localStorage.getItem(APP_SETTINGS_KEY) || '{}');
+    const defaults = getDefaultAppSettings();
+    return {
+      ...defaults,
+      ...saved,
+      speakers: saved.speakers?.length ? saved.speakers : defaults.speakers,
+    };
   } catch {
     return getDefaultAppSettings();
   }
@@ -156,37 +162,79 @@ async function refreshHome(query = '') {
 }
 
 async function startNewSession() {
-  const settings = getAppSettings();
-  currentEncounter = createEmptyEncounter({
-    timezone: settings.timezone,
-    language: settings.language,
-    speakers: settings.speakers.map((s) => ({ ...s })),
-    settings: {
-      language: settings.language,
-      enhancedTranscription: settings.enhancedTranscription,
-    },
-  });
-  await saveEncounter(currentEncounter);
-  openEncounter(currentEncounter.id);
+  try {
+    const settings = getAppSettings();
+    currentEncounter = createEmptyEncounter({
+      timezone: settings.timezone,
+      speakers: settings.speakers?.length ? settings.speakers : CONFIG.defaultSpeakers,
+      settings: {
+        language: settings.language,
+        enhancedTranscription: settings.enhancedTranscription,
+      },
+    });
+    await saveEncounter(currentEncounter);
+    await showSession(currentEncounter);
+    refreshHome(document.getElementById('search-input')?.value || '').catch(() => {});
+    showToast('New session ready', 'success', 2000);
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Could not start session', 'error');
+  }
 }
 
-async function openEncounter(id) {
-  currentEncounter = await getEncounter(id);
-  if (!currentEncounter) {
-    showToast('Encounter not found', 'error');
-    navigate('home', { skipReturn: true });
-    return refreshHome();
-  }
+function resetSessionTabs() {
+  const firstTab = 'record';
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    const selected = btn.dataset.tab === firstTab;
+    btn.classList.toggle('active', selected);
+    btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+    btn.setAttribute('tabindex', selected ? '0' : '-1');
+  });
+  document.querySelectorAll('.tab-panel').forEach((panel) => {
+    const active = panel.id === `panel-${firstTab}`;
+    panel.classList.toggle('active', active);
+    panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+  });
+}
+
+async function showSession(encounter) {
+  currentEncounter = encounter;
   transcriptFilter = '';
-  document.getElementById('session-search').value = '';
+  activeSegmentId = null;
+  recording = false;
+  paused = false;
+  diarizer = null;
+
+  const searchEl = document.getElementById('session-search');
+  if (searchEl) searchEl.value = '';
+
   if (player) player.destroy();
   player = currentEncounter.audioBlob ? new AudioPlayer() : null;
   if (player) {
     player.load(currentEncounter.audioBlob);
     player.onTimeUpdate = highlightActiveSegment;
   }
+
+  resetSessionTabs();
   renderSession();
   navigate('session');
+  document.getElementById('main')?.scrollIntoView({ behavior: 'instant', block: 'start' });
+  window.scrollTo(0, 0);
+}
+
+async function openEncounter(id) {
+  try {
+    const encounter = await getEncounter(id);
+    if (!encounter) {
+      showToast('Encounter not found', 'error');
+      navigate('home', { skipReturn: true });
+      return refreshHome();
+    }
+    await showSession(encounter);
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Could not open session', 'error');
+  }
 }
 
 function highlightActiveSegment(ms) {
@@ -704,7 +752,13 @@ async function init() {
   setupKeyboardShortcuts();
   registerServiceWorker();
 
-  document.getElementById('btn-new')?.addEventListener('click', startNewSession);
+  document.getElementById('main')?.addEventListener('click', (e) => {
+    const newBtn = e.target.closest('#btn-new, #btn-new-empty');
+    if (newBtn) {
+      e.preventDefault();
+      startNewSession();
+    }
+  });
   document.getElementById('btn-back')?.addEventListener('click', handleBack);
   document.getElementById('btn-settings')?.addEventListener('click', () => {
     renderSettings();
