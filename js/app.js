@@ -926,7 +926,7 @@ function renderSettings() {
           <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
           Auto-transcribe after recording
         </label>
-        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Uses multi-thread WASM when cross-origin isolation is active.</p>
+        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Whisper uses single-thread WASM on iPhone under cross-origin isolation (Safari CDN worker limitation).</p>
       </fieldset>
       ${renderRuntimeCapabilitiesHtml(getRuntimeCapabilities())}
       <fieldset>

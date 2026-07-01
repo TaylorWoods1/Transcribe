@@ -1,4 +1,4 @@
-const DEPLOY_ID = 'da1f7aa';
+const DEPLOY_ID = 'd65f568';
 const CACHE = `tiger-scribe-${DEPLOY_ID}`;
 
 /** Single source of truth for CSP — injected as HTTP header only (not meta). */

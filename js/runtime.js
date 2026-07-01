@@ -13,6 +13,12 @@ export function getExpectedCoepMode(session = sessionStorage) {
   return getActiveCoepModeLabel(session);
 }
 
+/** Thread count safe for ONNX/Whisper under COEP (Safari blocks CDN worker imports). */
+export function getOnnxWasmThreads({ isIOS, crossOriginIsolated, wasmThreads = 1 } = {}) {
+  if (isIOS && crossOriginIsolated) return 1;
+  return wasmThreads;
+}
+
 export function isServiceWorkerControlling() {
   return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller;
 }
@@ -71,6 +77,14 @@ export function getRuntimeCapabilities() {
     wasmThreads: canMultiThreadWasm
       ? Math.min(CONFIG.whisperWasmThreads || 4, Math.max(1, cores || 2))
       : 1,
+    /** ONNX Whisper thread count — Safari cannot load threaded workers from CDN under COEP. */
+    onnxWasmThreads: getOnnxWasmThreads({
+      isIOS,
+      crossOriginIsolated,
+      wasmThreads: canMultiThreadWasm
+        ? Math.min(CONFIG.whisperWasmThreads || 4, Math.max(1, cores || 2))
+        : 1,
+    }),
     localLlmFeasible: tier !== 'low' && (memoryGb == null || memoryGb >= 4),
     speakerDiarizationLocal: false,
     streamingAsrCeiling: canMultiThreadWasm
@@ -108,8 +122,13 @@ function buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU,
         'Cross-origin isolation is off — WASM runs single-threaded (~3–4× slower). Reload after update to enable threading.'
       );
     }
-  } else if (canMultiThreadWasm) {
+  } else if (canMultiThreadWasm && !(isIOS && crossOriginIsolated)) {
     notes.push('Multi-thread WASM active — using all available CPU cores for Whisper.');
+  }
+  if (isIOS && crossOriginIsolated) {
+    notes.push(
+      'Whisper uses single-thread WASM on iPhone — Safari blocks multi-thread ONNX workers from CDN under COEP.'
+    );
   }
   if (isIOS && hasWebGPU) {
     notes.push('WebGPU is available (iOS 26+) but Whisper often runs faster on WASM on Apple Silicon.');
