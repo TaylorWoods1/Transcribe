@@ -1,15 +1,38 @@
 import { test, expect } from '@playwright/test';
 
-test.beforeEach(async ({ page }) => {
+async function mockStandalonePwa(page) {
   await page.addInitScript(() => {
-    sessionStorage.setItem('tiger-coi-reload', '1');
-    localStorage.setItem('tiger-deploy-id', 'dev');
-    localStorage.setItem('tiger-install-prompt-dismissed', '1');
-    localStorage.setItem('tiger-install-prompt-seen', '1');
+    const standaloneQuery = '(display-mode: standalone)';
+    const originalMatchMedia = window.matchMedia.bind(window);
+    window.matchMedia = (query) => {
+      if (query === standaloneQuery || query === '(display-mode: fullscreen)') {
+        return {
+          matches: true,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => true,
+        };
+      }
+      return originalMatchMedia(query);
+    };
+    Object.defineProperty(window.navigator, 'standalone', {
+      configurable: true,
+      get: () => true,
+    });
   });
-});
+}
 
 test.describe('Tiger PWA smoke', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockStandalonePwa(page);
+    await page.addInitScript(() => {
+      sessionStorage.setItem('tiger-coi-reload', '1');
+      localStorage.setItem('tiger-deploy-id', 'dev');
+    });
+  });
   test('home page loads with app title', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#header-title')).toHaveText('Tiger');
@@ -64,7 +87,7 @@ test.describe('Tiger PWA smoke', () => {
   });
 });
 
-test.describe('Install prompt', () => {
+test.describe('Install gate', () => {
   test.use({
     userAgent:
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
@@ -75,18 +98,16 @@ test.describe('Install prompt', () => {
     await page.addInitScript(() => {
       sessionStorage.setItem('tiger-coi-reload', '1');
       localStorage.setItem('tiger-deploy-id', 'dev');
-      localStorage.removeItem('tiger-install-prompt-dismissed');
-    localStorage.removeItem('tiger-install-prompt-seen');
-    sessionStorage.removeItem('tiger-install-prompt-seen');
     });
   });
 
-  test('shows add to home screen guide in browser', async ({ page }) => {
+  test('blocks mobile browser until PWA is installed', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#install-prompt')).toBeVisible({ timeout: 8000 });
-    await expect(page.getByRole('heading', { name: /Install Tiger/i })).toBeVisible();
-    await page.getByRole('button', { name: 'Got it' }).click();
-    await expect(page.locator('#install-prompt')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: /Install Tiger to continue/i })).toBeVisible();
+    await expect(page.locator('#btn-new')).toBeHidden();
+    await expect(page.getByRole('button', { name: "I've installed — check again" })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Got it' })).toHaveCount(0);
   });
 });

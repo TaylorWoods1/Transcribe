@@ -1270,9 +1270,17 @@ body {
 .toast-error { border-left: 4px solid var(--danger); }
 .toast-info { border-left: 4px solid var(--accent); }
 
-/* Install PWA tutorial overlay */
-body.install-prompt-open {
+/* Install PWA gate — required on mobile browsers */
+body.install-prompt-open,
+body.install-required {
   overflow: hidden;
+}
+
+body.install-required .app-header,
+body.install-required .app-main,
+body.install-required .skip-link {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .install-prompt-overlay {
@@ -1284,13 +1292,17 @@ body.install-prompt-open {
   padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
 }
 
+.install-prompt-required .install-prompt-backdrop {
+  cursor: default;
+  background: var(--bg);
+}
+
 .install-prompt-backdrop {
   position: absolute;
   inset: 0;
   border: 0;
   background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(4px);
-  cursor: pointer;
 }
 
 .install-prompt-card {
@@ -1306,26 +1318,6 @@ body.install-prompt-open {
   animation: install-card-in 0.45s ease;
 }
 
-.install-prompt-close {
-  position: absolute;
-  top: 0.55rem;
-  right: 0.55rem;
-  z-index: 1;
-  width: 2rem;
-  height: 2rem;
-  border: 0;
-  border-radius: 50%;
-  background: var(--surface-2);
-  color: var(--text-muted);
-  font-size: 1.35rem;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.install-prompt-close:hover {
-  color: var(--text);
-  background: var(--border);
-}
 
 .install-prompt-body {
   flex: 1;
@@ -1358,6 +1350,14 @@ body.install-prompt-open {
   padding: var(--space-sm) var(--space-lg) var(--space-lg);
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+.install-prompt-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .install-phone {
