@@ -63,7 +63,7 @@ import {
   escapeHtml,
 } from './ui.js';
 
-const APP_SETTINGS_KEY = STORAGE_KEYS.APP_SETTINGS;
+import { getAppSettings, saveAppSettings } from './lib/app-settings.js';
 
 /** @type {object|null} */
 let currentEncounter = null;
@@ -172,36 +172,6 @@ function handleBack() {
     navigate('home', { skipReturn: true });
     refreshHome();
   }
-}
-
-function getAppSettings() {
-  try {
-    const saved = readJsonStorage(APP_SETTINGS_KEY);
-    const defaults = getDefaultAppSettings();
-    return {
-      ...defaults,
-      ...saved,
-      speakers: saved.speakers?.length ? saved.speakers : defaults.speakers,
-    };
-  } catch {
-    return getDefaultAppSettings();
-  }
-}
-
-function getDefaultAppSettings() {
-  return {
-    timezone: CONFIG.defaultTimezone,
-    language: CONFIG.defaultLanguage,
-    enhancedTranscription: false,
-    liveAssistEnabled: true,
-    liveAssistAi: true,
-    speakers: [...CONFIG.defaultSpeakers],
-    darkMode: null,
-  };
-}
-
-function saveAppSettings(settings) {
-  writeJsonStorage(APP_SETTINGS_KEY, settings);
 }
 
 async function refreshHome(query = '') {
@@ -996,8 +966,8 @@ function renderSettings() {
       color: sanitizeColor(fd.get(`speaker-color-${i}`) || s.color, s.color),
     }));
     const appSettings = {
-      timezone: fd.get('timezone'),
-      language: fd.get('language'),
+      timezone: String(fd.get('timezone') || settings.timezone),
+      language: String(fd.get('language') || settings.language),
       enhancedTranscription: fd.get('enhancedTranscription') === 'on',
       liveAssistEnabled: fd.get('liveAssistEnabled') === 'on',
       liveAssistAi: fd.get('liveAssistAi') === 'on',
@@ -1014,6 +984,24 @@ function renderSettings() {
     localStorage.setItem(STORAGE_KEYS.THEME, document.documentElement.dataset.theme);
     showToast('Settings saved', 'success');
   });
+
+  const persistToggle = (name, { onEnabled } = {}) => {
+    el.querySelector(`[name="${name}"]`)?.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      if (name === 'darkMode') {
+        document.documentElement.dataset.theme = checked ? 'dark' : 'light';
+        localStorage.setItem(STORAGE_KEYS.THEME, document.documentElement.dataset.theme);
+        return;
+      }
+      saveAppSettings({ [name]: checked });
+      if (checked) onEnabled?.();
+    });
+  };
+
+  persistToggle('enhancedTranscription', { onEnabled: () => scheduleWhisperWarm() });
+  persistToggle('liveAssistEnabled');
+  persistToggle('liveAssistAi');
+  persistToggle('darkMode');
 
   el.querySelector('#btn-clear-data')?.addEventListener('click', async () => {
     if (!confirm('Delete ALL encounters and data? This cannot be undone.')) return;

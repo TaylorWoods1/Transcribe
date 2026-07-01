@@ -34,6 +34,7 @@ const SHELL = [
   './js/lib/utils.js',
   './js/lib/clinical.js',
   './js/lib/storage-keys.js',
+  './js/lib/app-settings.js',
   './js/lib/ai-client.js',
   './js/lib/types.js',
   './js/export.js',
