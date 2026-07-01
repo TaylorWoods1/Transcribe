@@ -155,9 +155,15 @@ async function refreshHome(query = '') {
     onOpen: openEncounter,
     onDelete: async (id) => {
       if (!confirm('Delete this encounter? This cannot be undone.')) return;
-      await deleteEncounter(id);
-      showToast('Encounter deleted', 'info');
-      refreshHome(document.getElementById('search-input')?.value || '');
+      try {
+        await deleteEncounter(id);
+        if (currentEncounter?.id === id) currentEncounter = null;
+        showToast('Encounter deleted', 'info');
+        await refreshHome(document.getElementById('search-input')?.value || '');
+      } catch (err) {
+        console.error(err);
+        showToast(err.message || 'Could not delete encounter', 'error');
+      }
     },
     onNew: startNewSession,
   });
@@ -251,14 +257,20 @@ function highlightActiveSegment(ms) {
 
 function renderSession() {
   if (!currentEncounter) return;
-  document.getElementById('header-title').textContent = currentEncounter.title;
-  document.getElementById('session-title-input').value = currentEncounter.title;
-  renderRecordPanel();
-  renderTranscriptPanel();
-  renderNotesPanel();
-  renderActionsPanel();
-  renderInsightsPanel();
-  renderLiveAssistPanel();
+  try {
+    document.getElementById('header-title').textContent = currentEncounter.title;
+    document.getElementById('session-title-input').value = currentEncounter.title;
+    renderRecordPanel();
+    renderTranscriptPanel();
+    renderNotesPanel();
+    renderActionsPanel();
+    renderInsightsPanel();
+    renderLiveAssistPanel();
+  } catch (err) {
+    console.error(err);
+    showToast(err.message || 'Could not render session', 'error');
+    throw err;
+  }
 }
 
 function renderRecordPanel() {
