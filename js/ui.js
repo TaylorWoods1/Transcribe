@@ -70,12 +70,12 @@ export function renderEncounterList(encounters, handlers = {}) {
       ${encounters
         .map(
           (enc) => `
-        <li class="encounter-card card" data-id="${enc.id}">
+        <li class="encounter-card" data-id="${enc.id}">
           <button class="encounter-open" type="button" data-id="${enc.id}" aria-label="Open ${escapeHtml(enc.title)}">
             <span class="encounter-title">${escapeHtml(enc.title)}</span>
             <span class="encounter-meta">${formatDate(enc.updatedAt)} · ${formatDuration(enc.durationMs || 0)} · ${(enc.segments || []).length} seg.</span>
           </button>
-          <button class="btn-delete" type="button" data-id="${enc.id}" aria-label="Delete ${escapeHtml(enc.title)}">Delete</button>
+          <button class="encounter-delete" type="button" data-id="${enc.id}" aria-label="Delete ${escapeHtml(enc.title)}">Delete encounter</button>
         </li>`
         )
         .join('')}
@@ -84,7 +84,7 @@ export function renderEncounterList(encounters, handlers = {}) {
   root.querySelectorAll('.encounter-open').forEach((btn) => {
     btn.addEventListener('click', () => onOpen?.(btn.dataset.id));
   });
-  root.querySelectorAll('.btn-delete').forEach((btn) => {
+  root.querySelectorAll('.encounter-delete').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       onDelete?.(btn.dataset.id);
