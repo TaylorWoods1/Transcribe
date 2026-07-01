@@ -37,11 +37,9 @@ test.describe('Tiger PWA smoke', () => {
     }
   });
 
-  test('CSP allows WebAssembly for Whisper', async ({ request }) => {
+  test('CSP is applied via service worker, not meta tag', async ({ request }) => {
     const html = await (await request.get('/index.html')).text();
-    expect(html).toContain("'wasm-unsafe-eval'");
-    expect(html).toContain("'unsafe-eval'");
-    expect(html).toContain('https://cdn.jsdelivr.net');
+    expect(html).not.toMatch(/http-equiv=["']Content-Security-Policy["']/i);
   });
 
   test('service worker registers', async ({ page }) => {

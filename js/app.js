@@ -1090,11 +1090,47 @@ function setupKeyboardShortcuts() {
   });
 }
 
+function migrateAppVersion() {
+  const versionKey = 'tiger-app-version';
+  const prev = localStorage.getItem(versionKey);
+  if (prev === CONFIG.version) return;
+  localStorage.setItem(versionKey, CONFIG.version);
+
+  const whisper = readJsonStorage(STORAGE_KEYS.WHISPER_STATUS);
+  if (whisper.error || whisper.state === 'error') {
+    writeJsonStorage(STORAGE_KEYS.WHISPER_STATUS, {
+      ...whisper,
+      state: whisper.downloadedAt ? 'cached' : 'not_downloaded',
+      error: null,
+    });
+  }
+}
+
 function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'sw-activated') {
+      window.location.reload();
+    }
+  });
+
   navigator.serviceWorker
     .register('./sw.js')
-    .then(() => {
+    .then((reg) => {
+      reg.update();
+      if (reg.waiting) {
+        reg.waiting.postMessage({ type: 'skipWaiting' });
+      }
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'activated' && navigator.serviceWorker.controller) {
+            window.location.reload();
+          }
+        });
+      });
+
       if (!window.crossOriginIsolated && !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)) {
         sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
         window.location.reload();
@@ -1105,6 +1141,7 @@ function registerServiceWorker() {
 
 async function init() {
   migrateStorageKeys();
+  migrateAppVersion();
   loadTheme();
   initUi();
   navigate('home');

@@ -76,7 +76,7 @@ npm run check
 ```
 index.html              Entry point + CSP
 config.js               App configuration
-sw.js                   Service worker (v14) + COI/CSP headers
+sw.js                   Service worker (v15) + COI/CSP headers
 js/
   app.js                Orchestration
   lib/                  Shared utilities (tested)

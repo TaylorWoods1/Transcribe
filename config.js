@@ -2,7 +2,7 @@
 export const CONFIG = {
   appName: 'Tiger',
   appShortName: 'Tiger',
-  version: '1.0.0',
+  version: '1.0.1',
 
   /** Default timezone offset label (GMT+10) */
   defaultTimezone: 'Australia/Sydney',
