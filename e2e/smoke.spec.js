@@ -37,6 +37,13 @@ test.describe('Tiger PWA smoke', () => {
     }
   });
 
+  test('CSP allows WebAssembly for Whisper', async ({ request }) => {
+    const html = await (await request.get('/index.html')).text();
+    expect(html).toContain("'wasm-unsafe-eval'");
+    expect(html).toContain("'unsafe-eval'");
+    expect(html).toContain('https://cdn.jsdelivr.net');
+  });
+
   test('service worker registers', async ({ page }) => {
     await page.goto('/');
     const registered = await page.evaluate(async () => {
