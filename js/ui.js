@@ -153,7 +153,7 @@ export function bindTranscriptEvents(container, { onEdit, onSpeakerChange, onSee
   });
 }
 
-export function renderNotes(notes, { onChange }) {
+export function renderNotes(notes) {
   return NOTE_SECTIONS.map(
     (sec) => `
     <label class="note-field">
