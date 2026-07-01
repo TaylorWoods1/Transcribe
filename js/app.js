@@ -33,7 +33,7 @@ import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings,
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
-import { mountInstallPrompt } from './install-prompt.js';
+import { scheduleInstallPrompt } from './install-prompt.js';
 import {
   STORAGE_KEYS,
   migrateStorageKeys,
@@ -1121,6 +1121,19 @@ async function migrateDeployRelease() {
   return true;
 }
 
+async function ensureCrossOriginIsolation() {
+  if (
+    'serviceWorker' in navigator &&
+    !window.crossOriginIsolated &&
+    !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)
+  ) {
+    sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
+    window.location.reload();
+    return false;
+  }
+  return true;
+}
+
 async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
 
@@ -1149,16 +1162,12 @@ async function registerServiceWorker() {
       }
     });
   });
-
-  if (!window.crossOriginIsolated && !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)) {
-    sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
-    window.location.reload();
-  }
 }
 
 async function init() {
   migrateStorageKeys();
   if (await migrateDeployRelease()) return;
+  if (!(await ensureCrossOriginIsolation())) return;
   loadTheme();
   initUi();
   navigate('home');
@@ -1166,8 +1175,7 @@ async function init() {
   setupKeyboardShortcuts();
   await registerServiceWorker();
 
-  const caps = getRuntimeCapabilities();
-  setTimeout(() => mountInstallPrompt(caps), 600);
+  scheduleInstallPrompt(getRuntimeCapabilities());
 
   document.getElementById('main')?.addEventListener('click', (e) => {
     const newBtn = e.target.closest('#btn-new, #btn-new-empty');

@@ -10,6 +10,7 @@ export const STORAGE_KEYS = Object.freeze({
   COI_RELOAD: 'tiger-coi-reload',
   DEPLOY_ID: 'tiger-deploy-id',
   INSTALL_PROMPT_DISMISSED: 'tiger-install-prompt-dismissed',
+  INSTALL_PROMPT_SEEN: 'tiger-install-prompt-seen',
   DB_FLAGS: 'tiger-db-flags',
 });
 

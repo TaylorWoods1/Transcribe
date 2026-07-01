@@ -49,14 +49,37 @@ export function getInstallSteps(isIOS) {
   ];
 }
 
+function readStorageFlag(storage, key) {
+  try {
+    return storage.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeStorageFlag(storage, key) {
+  try {
+    storage.setItem(key, '1');
+  } catch {
+    /* private browsing may block storage */
+  }
+}
+
 /**
  * @param {{ isStandalone: boolean }} caps
- * @param {Storage} [storage]
+ * @param {Storage} [local]
+ * @param {Storage} [session]
  * @returns {boolean}
  */
-export function shouldShowInstallPrompt(caps, storage = localStorage) {
+export function shouldShowInstallPrompt(
+  caps,
+  local = localStorage,
+  session = sessionStorage
+) {
   if (caps.isStandalone) return false;
-  return storage.getItem(STORAGE_KEYS.INSTALL_PROMPT_DISMISSED) !== '1';
+  if (readStorageFlag(local, STORAGE_KEYS.INSTALL_PROMPT_DISMISSED)) return false;
+  if (readStorageFlag(session, STORAGE_KEYS.INSTALL_PROMPT_SEEN)) return false;
+  return true;
 }
 
 /**
@@ -134,6 +157,7 @@ export function renderInstallPromptHtml(isIOS) {
  */
 export function mountInstallPrompt(caps, options = {}) {
   if (!shouldShowInstallPrompt(caps)) return null;
+  if (document.getElementById('install-prompt')) return null;
 
   const wrapper = document.createElement('div');
   wrapper.innerHTML = renderInstallPromptHtml(caps.isIOS);
@@ -147,7 +171,9 @@ export function mountInstallPrompt(caps, options = {}) {
     root.classList.remove('visible');
     setTimeout(() => root.remove(), 280);
     if (permanent) {
-      localStorage.setItem(STORAGE_KEYS.INSTALL_PROMPT_DISMISSED, '1');
+      writeStorageFlag(localStorage, STORAGE_KEYS.INSTALL_PROMPT_DISMISSED);
+    } else {
+      writeStorageFlag(sessionStorage, STORAGE_KEYS.INSTALL_PROMPT_SEEN);
     }
     options.onDismiss?.(permanent);
   };
@@ -157,4 +183,21 @@ export function mountInstallPrompt(caps, options = {}) {
   root.querySelector('.install-prompt-backdrop')?.addEventListener('click', () => close(false));
 
   return () => close(false);
+}
+
+/**
+ * Show after app shell is stable (post-COI reload). Safe to call multiple times.
+ * @param {{ isIOS: boolean, isStandalone: boolean }} caps
+ */
+export function scheduleInstallPrompt(caps) {
+  if (!shouldShowInstallPrompt(caps)) return;
+
+  const show = () => mountInstallPrompt(caps);
+
+  if (document.readyState === 'complete') {
+    requestAnimationFrame(() => requestAnimationFrame(show));
+    return;
+  }
+
+  window.addEventListener('load', () => requestAnimationFrame(show), { once: true });
 }
