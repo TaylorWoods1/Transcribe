@@ -52,6 +52,72 @@ let paused = false;
 let timerInterval = null;
 let activeSegmentId = null;
 let transcriptFilter = '';
+/** View to return to from settings (home | session) */
+let returnView = 'home';
+
+function getActiveView() {
+  const active = document.querySelector('.view.active');
+  return active?.id?.replace('view-', '') || 'home';
+}
+
+function navigate(view, { skipReturn = false } = {}) {
+  const from = getActiveView();
+  if (!skipReturn && view === 'settings' && from !== 'settings') {
+    returnView = from;
+  }
+
+  document.querySelectorAll('.view').forEach((v) => {
+    v.classList.remove('active');
+    v.setAttribute('aria-hidden', 'true');
+  });
+  const next = document.getElementById(`view-${view}`);
+  next?.classList.add('active');
+  next?.setAttribute('aria-hidden', 'false');
+
+  document.querySelectorAll('[data-nav]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.nav === view);
+  });
+
+  const backBtn = document.getElementById('btn-back');
+  const settingsBtn = document.getElementById('btn-settings');
+  const showBack = view !== 'home';
+  if (backBtn) {
+    backBtn.hidden = !showBack;
+    backBtn.setAttribute('aria-hidden', showBack ? 'false' : 'true');
+  }
+  if (settingsBtn) {
+    settingsBtn.hidden = view === 'settings';
+    settingsBtn.setAttribute('aria-hidden', view === 'settings' ? 'true' : 'false');
+  }
+
+  document.getElementById('header-title').textContent =
+    view === 'home' ? CONFIG.appName : view === 'settings' ? 'Settings' : currentEncounter?.title || 'Session';
+}
+
+function handleBack() {
+  if (recording) {
+    if (!confirm('Recording in progress. Stop and go back?')) return;
+    stopRecording().then(() => handleBack());
+    return;
+  }
+
+  const current = getActiveView();
+  if (current === 'settings') {
+    if (returnView === 'session' && currentEncounter) {
+      navigate('session', { skipReturn: true });
+      renderSession();
+    } else {
+      navigate('home', { skipReturn: true });
+      refreshHome();
+    }
+    return;
+  }
+
+  if (current === 'session') {
+    navigate('home', { skipReturn: true });
+    refreshHome();
+  }
+}
 
 function getAppSettings() {
   try {
@@ -73,18 +139,6 @@ function getDefaultAppSettings() {
 
 function saveAppSettings(settings) {
   localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
-}
-
-function navigate(view) {
-  document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
-  document.getElementById(`view-${view}`)?.classList.add('active');
-  document.querySelectorAll('[data-nav]').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.nav === view);
-  });
-  const backBtn = document.getElementById('btn-back');
-  if (backBtn) backBtn.hidden = view === 'home';
-  document.getElementById('header-title').textContent =
-    view === 'home' ? CONFIG.appName : view === 'settings' ? 'Settings' : currentEncounter?.title || 'Session';
 }
 
 async function refreshHome(query = '') {
@@ -120,7 +174,8 @@ async function openEncounter(id) {
   currentEncounter = await getEncounter(id);
   if (!currentEncounter) {
     showToast('Encounter not found', 'error');
-    return navigate('home');
+    navigate('home', { skipReturn: true });
+    return refreshHome();
   }
   transcriptFilter = '';
   document.getElementById('session-search').value = '';
@@ -501,6 +556,7 @@ function renderSettings() {
   const ai = getAiSettings();
   const el = document.getElementById('view-settings');
   el.innerHTML = `
+    <div class="settings-page card">
     <form class="settings-form" id="settings-form">
       <fieldset>
         <legend>General</legend>
@@ -551,8 +607,9 @@ function renderSettings() {
         <button class="btn btn-secondary" type="button" id="btn-export-all">Export current encounter</button>
         <button class="btn btn-danger" type="button" id="btn-clear-data">Clear all data</button>
       </fieldset>
-      <button class="btn btn-primary" type="submit">Save settings</button>
-    </form>`;
+      <button class="btn btn-primary btn-block" type="submit">Save settings</button>
+    </form>
+    </div>`;
 
   el.querySelector('#settings-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -601,8 +658,17 @@ function setupTabs() {
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === `panel-${tab}`));
+      document.querySelectorAll('.tab-btn').forEach((b) => {
+        const selected = b === btn;
+        b.classList.toggle('active', selected);
+        b.setAttribute('aria-selected', selected ? 'true' : 'false');
+        b.setAttribute('tabindex', selected ? '0' : '-1');
+      });
+      document.querySelectorAll('.tab-panel').forEach((p) => {
+        const active = p.id === `panel-${tab}`;
+        p.classList.toggle('active', active);
+        p.setAttribute('aria-hidden', active ? 'false' : 'true');
+      });
     });
   });
 }
@@ -639,18 +705,7 @@ async function init() {
   registerServiceWorker();
 
   document.getElementById('btn-new')?.addEventListener('click', startNewSession);
-  document.getElementById('btn-back')?.addEventListener('click', () => {
-    if (recording) {
-      if (!confirm('Recording in progress. Stop and go back?')) return;
-      stopRecording().then(() => {
-        navigate('home');
-        refreshHome();
-      });
-      return;
-    }
-    navigate('home');
-    refreshHome();
-  });
+  document.getElementById('btn-back')?.addEventListener('click', handleBack);
   document.getElementById('btn-settings')?.addEventListener('click', () => {
     renderSettings();
     navigate('settings');

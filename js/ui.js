@@ -53,7 +53,7 @@ export function renderEncounterList(encounters, { onOpen, onDelete, onNew }) {
   if (!root) return;
   if (!encounters.length) {
     root.innerHTML = `
-      <div class="empty-state">
+      <div class="empty-state card">
         <div class="empty-icon" aria-hidden="true">🎙</div>
         <h2>No encounters yet</h2>
         <p>Start a new session to record and transcribe a conversation.</p>
@@ -68,10 +68,10 @@ export function renderEncounterList(encounters, { onOpen, onDelete, onNew }) {
       ${encounters
         .map(
           (enc) => `
-        <li class="encounter-card" data-id="${enc.id}">
+        <li class="encounter-card card" data-id="${enc.id}">
           <button class="encounter-open" type="button" data-id="${enc.id}" aria-label="Open ${escapeHtml(enc.title)}">
             <span class="encounter-title">${escapeHtml(enc.title)}</span>
-            <span class="encounter-meta">${formatDate(enc.updatedAt)} · ${formatDuration(enc.durationMs || 0)} · ${(enc.segments || []).length} segments</span>
+            <span class="encounter-meta">${formatDate(enc.updatedAt)} · ${formatDuration(enc.durationMs || 0)} · ${(enc.segments || []).length} seg.</span>
           </button>
           <button class="btn-icon btn-delete" type="button" data-id="${enc.id}" aria-label="Delete ${escapeHtml(enc.title)}">✕</button>
         </li>`
@@ -120,7 +120,7 @@ export function renderTranscript(segments, speakers, { activeSegmentId, filter, 
         const sp = speakerMap[seg.speakerId] || { name: 'Speaker', color: '#666' };
         const active = seg.id === activeSegmentId ? ' active' : '';
         return `
-      <article class="transcript-segment${active}" role="listitem" data-id="${seg.id}" data-start="${seg.startMs}">
+      <article class="transcript-segment card${active}" role="listitem" data-id="${seg.id}" data-start="${seg.startMs}">
         <div class="segment-header">
           <button class="segment-time" type="button" data-seek="${seg.startMs}" aria-label="Seek to ${formatTimestamp(seg.startMs)}">${formatTimestamp(seg.startMs)}</button>
           <select class="segment-speaker" data-id="${seg.id}" aria-label="Speaker for segment" style="--speaker-color:${sp.color}">
@@ -174,10 +174,10 @@ export function renderActions(actions, { onToggle, onDelete, onAdd }) {
   const items = (actions || [])
     .map(
       (a) => `
-    <li class="action-item ${a.done ? 'done' : ''}" data-id="${a.id}">
+    <li class="action-item card ${a.done ? 'done' : ''}" data-id="${a.id}">
       <label class="action-check">
         <input type="checkbox" ${a.done ? 'checked' : ''} data-id="${a.id}" aria-label="Mark action done">
-        <span class="action-text">${escapeHtml(a.text)}</span>
+        <span class="action-text copy-contained">${escapeHtml(a.text)}</span>
       </label>
       <button class="btn-icon action-delete" type="button" data-id="${a.id}" aria-label="Delete action">✕</button>
     </li>`
@@ -228,14 +228,14 @@ export function renderInsights(insights) {
     .join('');
 
   return `
-    <div class="disclaimer" role="note">${escapeHtml(getDisclaimer())}</div>
+    <div class="disclaimer copy-contained" role="note">${escapeHtml(getDisclaimer())}</div>
     ${flags}
-    <section class="insight-block">
+    <section class="insight-block card">
       <h3>Summary</h3>
-      <p>${escapeHtml(insights.summary || 'Generate notes or record more to see insights.')}</p>
+      <p class="copy-contained">${escapeHtml(insights.summary || 'Generate notes or record more to see insights.')}</p>
     </section>
-    ${entities ? `<section class="insight-block"><h3>Entities</h3><div class="chips">${entities}</div></section>` : ''}
-    ${questions ? `<section class="insight-block"><h3>Questions asked</h3><ul>${questions}</ul></section>` : ''}`;
+    ${entities ? `<section class="insight-block card"><h3>Entities</h3><div class="chips">${entities}</div></section>` : ''}
+    ${questions ? `<section class="insight-block card"><h3>Questions asked</h3><ul class="copy-contained">${questions}</ul></section>` : ''}`;
 }
 
 export function renderLiveAssist(segments, speakers) {
