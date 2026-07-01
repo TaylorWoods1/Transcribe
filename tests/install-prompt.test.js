@@ -27,17 +27,24 @@ describe('install-prompt', () => {
 
   it('hides when already installed', () => {
     const storage = createMemoryStorage();
-    expect(shouldShowInstallPrompt({ isStandalone: true }, storage)).toBe(false);
+    expect(shouldShowInstallPrompt({ isStandalone: true }, storage, storage)).toBe(false);
   });
 
   it('hides when dismissed permanently', () => {
     const storage = createMemoryStorage();
     storage.setItem(STORAGE_KEYS.INSTALL_PROMPT_DISMISSED, '1');
-    expect(shouldShowInstallPrompt({ isStandalone: false }, storage)).toBe(false);
+    expect(shouldShowInstallPrompt({ isStandalone: false }, storage, storage)).toBe(false);
   });
 
   it('shows in browser when not dismissed', () => {
     const storage = createMemoryStorage();
-    expect(shouldShowInstallPrompt({ isStandalone: false }, storage)).toBe(true);
+    expect(shouldShowInstallPrompt({ isStandalone: false }, storage, storage)).toBe(true);
+  });
+
+  it('hides for this session after seen', () => {
+    const local = createMemoryStorage();
+    const session = createMemoryStorage();
+    session.setItem(STORAGE_KEYS.INSTALL_PROMPT_SEEN, '1');
+    expect(shouldShowInstallPrompt({ isStandalone: false }, local, session)).toBe(false);
   });
 });
