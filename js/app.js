@@ -1,5 +1,5 @@
 /**
- * Lucy Scribe — main app orchestration and routing.
+ * Tiger — main app orchestration and routing.
  */
 import { CONFIG } from '../config.js';
 import {
@@ -80,10 +80,12 @@ function navigate(view, { skipReturn = false } = {}) {
 
   const backBtn = document.getElementById('btn-back');
   const settingsBtn = document.getElementById('btn-settings');
-  const showBack = view !== 'home';
+  const onHome = view === 'home';
   if (backBtn) {
-    backBtn.hidden = !showBack;
-    backBtn.setAttribute('aria-hidden', showBack ? 'false' : 'true');
+    backBtn.classList.toggle('is-visible', !onHome);
+    backBtn.hidden = onHome;
+    backBtn.setAttribute('aria-hidden', onHome ? 'true' : 'false');
+    backBtn.disabled = onHome;
   }
   if (settingsBtn) {
     settingsBtn.hidden = view === 'settings';
@@ -748,6 +750,7 @@ function registerServiceWorker() {
 async function init() {
   loadTheme();
   initUi();
+  navigate('home');
   setupTabs();
   setupKeyboardShortcuts();
   registerServiceWorker();
@@ -790,7 +793,6 @@ async function init() {
   });
 
   await refreshHome();
-  navigate('home');
 }
 
 init();

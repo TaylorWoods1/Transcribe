@@ -1,6 +1,6 @@
 {
-  "name": "Lucy Scribe",
-  "short_name": "Lucy",
+  "name": "Tiger",
+  "short_name": "Tiger",
   "description": "Local-first transcription, diarization, and clinical note-taking PWA",
   "start_url": "./index.html",
   "scope": "./",
