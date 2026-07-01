@@ -1,0 +1,687 @@
+/**
+ * Lucy Scribe — main app orchestration and routing.
+ */
+import { CONFIG } from '../config.js';
+import {
+  createEmptyEncounter,
+  saveEncounter,
+  getEncounter,
+  deleteEncounter,
+  listEncounters,
+  searchEncounters,
+  clearAllData,
+} from './db.js';
+import { AudioRecorder, AudioPlayer } from './audio.js';
+import { LiveTranscriber, isLiveTranscriptionSupported } from './transcribe-live.js';
+import { transcribeBlob, transcribeFile } from './transcribe-whisper.js';
+import { DiarizationTracker } from './diarize.js';
+import { generateNotesFromSegments } from './notes.js';
+import { extractActions, toggleAction, updateActionText, deleteAction, addAction } from './actions.js';
+import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured } from './ai.js';
+import { analyzeEncounter } from './insights.js';
+import { exportEncounter } from './export.js';
+import {
+  initUi,
+  showToast,
+  renderEncounterList,
+  renderWaveform,
+  buildWaveformHtml,
+  renderTranscript,
+  bindTranscriptEvents,
+  renderNotes,
+  bindNotesEvents,
+  renderActions,
+  bindActionEvents,
+  renderInsights,
+  renderLiveAssist,
+  loadTheme,
+  formatDuration,
+  escapeHtml,
+} from './ui.js';
+
+const APP_SETTINGS_KEY = 'lucy-app-settings';
+
+/** @type {object|null} */
+let currentEncounter = null;
+let recorder = null;
+let liveTranscriber = null;
+let diarizer = null;
+let player = null;
+let recording = false;
+let paused = false;
+let timerInterval = null;
+let activeSegmentId = null;
+let transcriptFilter = '';
+
+function getAppSettings() {
+  try {
+    return { ...getDefaultAppSettings(), ...JSON.parse(localStorage.getItem(APP_SETTINGS_KEY) || '{}') };
+  } catch {
+    return getDefaultAppSettings();
+  }
+}
+
+function getDefaultAppSettings() {
+  return {
+    timezone: CONFIG.defaultTimezone,
+    language: CONFIG.defaultLanguage,
+    enhancedTranscription: false,
+    speakers: [...CONFIG.defaultSpeakers],
+    darkMode: null,
+  };
+}
+
+function saveAppSettings(settings) {
+  localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function navigate(view) {
+  document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+  document.getElementById(`view-${view}`)?.classList.add('active');
+  document.querySelectorAll('[data-nav]').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.nav === view);
+  });
+  const backBtn = document.getElementById('btn-back');
+  if (backBtn) backBtn.hidden = view === 'home';
+  document.getElementById('header-title').textContent =
+    view === 'home' ? CONFIG.appName : view === 'settings' ? 'Settings' : currentEncounter?.title || 'Session';
+}
+
+async function refreshHome(query = '') {
+  const encounters = query ? await searchEncounters(query) : await listEncounters();
+  renderEncounterList(encounters, {
+    onOpen: openEncounter,
+    onDelete: async (id) => {
+      if (!confirm('Delete this encounter? This cannot be undone.')) return;
+      await deleteEncounter(id);
+      showToast('Encounter deleted', 'info');
+      refreshHome(document.getElementById('search-input')?.value || '');
+    },
+    onNew: startNewSession,
+  });
+}
+
+async function startNewSession() {
+  const settings = getAppSettings();
+  currentEncounter = createEmptyEncounter({
+    timezone: settings.timezone,
+    language: settings.language,
+    speakers: settings.speakers.map((s) => ({ ...s })),
+    settings: {
+      language: settings.language,
+      enhancedTranscription: settings.enhancedTranscription,
+    },
+  });
+  await saveEncounter(currentEncounter);
+  openEncounter(currentEncounter.id);
+}
+
+async function openEncounter(id) {
+  currentEncounter = await getEncounter(id);
+  if (!currentEncounter) {
+    showToast('Encounter not found', 'error');
+    return navigate('home');
+  }
+  transcriptFilter = '';
+  document.getElementById('session-search').value = '';
+  if (player) player.destroy();
+  player = currentEncounter.audioBlob ? new AudioPlayer() : null;
+  if (player) {
+    player.load(currentEncounter.audioBlob);
+    player.onTimeUpdate = highlightActiveSegment;
+  }
+  renderSession();
+  navigate('session');
+}
+
+function highlightActiveSegment(ms) {
+  const seg = (currentEncounter.segments || []).find(
+    (s) => ms >= s.startMs && ms <= (s.endMs || s.startMs + 2000)
+  );
+  if (seg && seg.id !== activeSegmentId) {
+    activeSegmentId = seg.id;
+    renderTranscriptPanel();
+  }
+}
+
+function renderSession() {
+  if (!currentEncounter) return;
+  document.getElementById('header-title').textContent = currentEncounter.title;
+  document.getElementById('session-title-input').value = currentEncounter.title;
+  renderRecordPanel();
+  renderTranscriptPanel();
+  renderNotesPanel();
+  renderActionsPanel();
+  renderInsightsPanel();
+  renderLiveAssistPanel();
+}
+
+function renderRecordPanel() {
+  const el = document.getElementById('panel-record');
+  const status = recording ? (paused ? 'Paused' : 'Recording') : currentEncounter.audioBlob ? 'Recorded' : 'Ready';
+  el.innerHTML = `
+    <div class="record-panel">
+      ${buildWaveformHtml()}
+      <div class="record-status" aria-live="polite">
+        <span class="status-dot ${recording && !paused ? 'live' : ''}"></span>
+        <span id="record-timer">${formatDuration(currentEncounter.durationMs || 0)}</span>
+        <span class="status-label">${status}</span>
+      </div>
+      <div class="record-controls">
+        ${!recording ? `<button class="btn btn-record" id="btn-record" type="button" aria-label="Start recording">● Record</button>` : ''}
+        ${recording && !paused ? `<button class="btn btn-secondary" id="btn-pause" type="button">Pause</button>` : ''}
+        ${recording && paused ? `<button class="btn btn-secondary" id="btn-resume" type="button">Resume</button>` : ''}
+        ${recording ? `<button class="btn btn-danger" id="btn-stop" type="button">Stop</button>` : ''}
+      </div>
+      ${!isLiveTranscriptionSupported() ? '<p class="warn">Live transcription requires Chrome. Enhanced mode available after recording.</p>' : ''}
+      <div class="playback-controls" ${currentEncounter.audioBlob ? '' : 'hidden'}>
+        <button class="btn btn-secondary" id="btn-play" type="button">Play</button>
+        <button class="btn btn-secondary" id="btn-enhance" type="button">${currentEncounter.settings?.enhancedTranscription ? 'Re-run enhanced transcription' : 'Enhanced transcription'}</button>
+        <label class="file-import">
+          <input type="file" id="import-audio" accept="audio/*" hidden>
+          <span class="btn btn-secondary">Import audio</span>
+        </label>
+      </div>
+      <div id="enhance-progress" class="muted" hidden></div>
+      <div class="speaker-switch" role="group" aria-label="Active speaker">
+        ${(currentEncounter.speakers || [])
+          .map(
+            (s) =>
+              `<button class="speaker-btn ${diarizer?.activeSpeakerId === s.id ? 'active' : ''}" type="button" data-speaker="${s.id}" style="--speaker-color:${s.color}">${escapeHtml(s.name)}</button>`
+          )
+          .join('')}
+        <span class="hint">Tap to switch speaker (shortcut: S)</span>
+      </div>
+    </div>`;
+
+  el.querySelector('#btn-record')?.addEventListener('click', startRecording);
+  el.querySelector('#btn-pause')?.addEventListener('click', pauseRecording);
+  el.querySelector('#btn-resume')?.addEventListener('click', resumeRecording);
+  el.querySelector('#btn-stop')?.addEventListener('click', stopRecording);
+  el.querySelector('#btn-play')?.addEventListener('click', togglePlayback);
+  el.querySelector('#btn-enhance')?.addEventListener('click', runEnhancedTranscription);
+  el.querySelector('#import-audio')?.addEventListener('change', handleImportAudio);
+  el.querySelectorAll('[data-speaker]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      diarizer?.setActiveSpeaker(btn.dataset.speaker);
+      renderRecordPanel();
+    });
+  });
+}
+
+function renderTranscriptPanel() {
+  const el = document.getElementById('panel-transcript');
+  el.innerHTML = renderTranscript(currentEncounter.segments || [], currentEncounter.speakers || [], {
+    activeSegmentId,
+    filter: transcriptFilter,
+  });
+  bindTranscriptEvents(el, {
+    onEdit: async (id, text) => {
+      const seg = currentEncounter.segments.find((s) => s.id === id);
+      if (seg) seg.text = text;
+      await persist();
+    },
+    onSpeakerChange: async (id, speakerId) => {
+      const seg = currentEncounter.segments.find((s) => s.id === id);
+      if (seg) seg.speakerId = speakerId;
+      await persist();
+      renderTranscriptPanel();
+    },
+    onSeek: (ms) => {
+      if (player) {
+        player.seek(ms);
+        player.play();
+      }
+    },
+  });
+}
+
+function renderNotesPanel() {
+  const el = document.getElementById('panel-notes');
+  el.innerHTML = `
+    <div class="panel-actions">
+      <button class="btn btn-primary" id="btn-gen-notes" type="button">Generate SOAP notes</button>
+      <button class="btn btn-secondary" id="btn-ai-summary" type="button">AI summary</button>
+    </div>
+    <div id="notes-fields">${renderNotes(currentEncounter.notes || {})}</div>`;
+  bindNotesEvents(el.querySelector('#notes-fields'), async (key, value) => {
+    currentEncounter.notes[key] = value;
+    await persist();
+  });
+  el.querySelector('#btn-gen-notes')?.addEventListener('click', generateNotes);
+  el.querySelector('#btn-ai-summary')?.addEventListener('click', generateAiSummary);
+}
+
+function renderActionsPanel() {
+  const el = document.getElementById('panel-actions');
+  el.innerHTML = `
+    <div class="panel-actions">
+      <button class="btn btn-primary" id="btn-extract-actions" type="button">Extract actions</button>
+    </div>
+    <div id="actions-list">${renderActions(currentEncounter.actions || [])}</div>`;
+  bindActionEvents(el.querySelector('#actions-list'), {
+    onToggle: async (id) => {
+      currentEncounter.actions = toggleAction(currentEncounter.actions, id);
+      await persist();
+      renderActionsPanel();
+    },
+    onDelete: async (id) => {
+      currentEncounter.actions = deleteAction(currentEncounter.actions, id);
+      await persist();
+      renderActionsPanel();
+    },
+    onAdd: async (text) => {
+      currentEncounter.actions = addAction(currentEncounter.actions, text);
+      await persist();
+      renderActionsPanel();
+    },
+  });
+  el.querySelector('#btn-extract-actions')?.addEventListener('click', extractEncounterActions);
+}
+
+function renderInsightsPanel() {
+  const el = document.getElementById('panel-insights');
+  currentEncounter.insights = analyzeEncounter(currentEncounter);
+  el.innerHTML = renderInsights(currentEncounter.insights);
+}
+
+function renderLiveAssistPanel() {
+  const el = document.getElementById('panel-assist');
+  el.innerHTML = renderLiveAssist(currentEncounter.segments || [], currentEncounter.speakers || []);
+}
+
+async function persist() {
+  currentEncounter.updatedAt = Date.now();
+  await saveEncounter(currentEncounter);
+}
+
+async function startRecording() {
+  try {
+    recorder = new AudioRecorder({
+      onWaveform: renderWaveform,
+      onChunk: () => {},
+      onError: (e) => showToast(e.message, 'error'),
+    });
+    await recorder.start();
+    diarizer = new DiarizationTracker({
+      speakers: currentEncounter.speakers,
+      activeSpeakerId: currentEncounter.speakers[0]?.id,
+    });
+
+    if (isLiveTranscriptionSupported()) {
+      liveTranscriber = new LiveTranscriber({
+        language: currentEncounter.settings.language,
+        onPartial: ({ text, endMs }) => {
+          diarizer.onPartial({ text, endMs });
+          syncSegments();
+          renderLiveAssistPanel();
+        },
+        onFinal: ({ text, endMs, confidence }) => {
+          diarizer.onFinal({ text, endMs, confidence });
+          syncSegments();
+          renderTranscriptPanel();
+          renderLiveAssistPanel();
+        },
+        onError: (e) => showToast(e.message, 'error'),
+      });
+      liveTranscriber.start();
+    }
+
+    recording = true;
+    paused = false;
+    timerInterval = setInterval(updateTimer, 500);
+    renderRecordPanel();
+    showToast('Recording started', 'success');
+  } catch (e) {
+    showToast(e.message || 'Microphone permission denied', 'error');
+  }
+}
+
+function pauseRecording() {
+  recorder?.pause();
+  paused = true;
+  renderRecordPanel();
+}
+
+function resumeRecording() {
+  recorder?.resume();
+  paused = false;
+  renderRecordPanel();
+}
+
+async function stopRecording() {
+  clearInterval(timerInterval);
+  liveTranscriber?.stop();
+  const result = await recorder?.stop();
+  recording = false;
+  paused = false;
+  if (result?.blob) currentEncounter.audioBlob = result.blob;
+  if (result?.durationMs) currentEncounter.durationMs = result.durationMs;
+  syncSegments();
+  if (player) player.destroy();
+  if (currentEncounter.audioBlob) {
+    player = new AudioPlayer();
+    player.load(currentEncounter.audioBlob);
+    player.onTimeUpdate = highlightActiveSegment;
+  }
+  currentEncounter.insights = analyzeEncounter(currentEncounter);
+  await persist();
+  renderSession();
+  showToast('Recording saved', 'success');
+
+  const settings = getAppSettings();
+  if (settings.enhancedTranscription && currentEncounter.audioBlob) {
+    runEnhancedTranscription();
+  }
+}
+
+function syncSegments() {
+  if (diarizer) currentEncounter.segments = diarizer.getSegments();
+}
+
+function updateTimer() {
+  const ms = recorder?.getElapsedMs() || currentEncounter.durationMs || 0;
+  const el = document.getElementById('record-timer');
+  if (el) el.textContent = formatDuration(ms);
+}
+
+function togglePlayback() {
+  if (!player) return;
+  if (player.audio.paused) player.play();
+  else player.pause();
+}
+
+async function runEnhancedTranscription() {
+  if (!currentEncounter.audioBlob) {
+    showToast('No audio to transcribe', 'error');
+    return;
+  }
+  const progressEl = document.getElementById('enhance-progress');
+  if (progressEl) {
+    progressEl.hidden = false;
+    progressEl.textContent = 'Loading Whisper model… (first run downloads ~40MB)';
+  }
+  try {
+    const segments = await transcribeBlob(currentEncounter.audioBlob, {
+      language: currentEncounter.settings.language,
+      onProgress: (p) => {
+        if (progressEl && p.progress != null) {
+          progressEl.textContent = `Loading model: ${Math.round(p.progress)}%`;
+        }
+      },
+    });
+    if (!diarizer) {
+      diarizer = new DiarizationTracker({ speakers: currentEncounter.speakers });
+    }
+    diarizer.segments = [];
+    diarizer.mergeWhisperSegments(segments, currentEncounter.speakers[0]?.id);
+    syncSegments();
+    currentEncounter.settings.enhancedTranscription = true;
+    await persist();
+    renderTranscriptPanel();
+    if (progressEl) progressEl.textContent = 'Enhanced transcription complete.';
+    showToast('Enhanced transcription complete', 'success');
+  } catch (e) {
+    if (progressEl) progressEl.textContent = '';
+    showToast(e.message || 'Enhanced transcription failed', 'error');
+  }
+}
+
+async function handleImportAudio(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  currentEncounter.audioBlob = file;
+  currentEncounter.durationMs = 0;
+  if (player) player.destroy();
+  player = new AudioPlayer();
+  player.load(file);
+  player.onTimeUpdate = highlightActiveSegment;
+  await persist();
+  renderRecordPanel();
+  showToast('Audio imported', 'success');
+  if (getAppSettings().enhancedTranscription) runEnhancedTranscription();
+  else {
+    try {
+      const segments = await transcribeFile(file, { language: currentEncounter.settings.language });
+      diarizer = new DiarizationTracker({ speakers: currentEncounter.speakers });
+      diarizer.mergeWhisperSegments(segments);
+      syncSegments();
+      await persist();
+      renderTranscriptPanel();
+    } catch {
+      showToast('Import audio saved. Enable enhanced transcription to transcribe.', 'info');
+    }
+  }
+}
+
+async function generateNotes() {
+  try {
+    const notes = await generateSoapNote(currentEncounter);
+    currentEncounter.notes = { ...currentEncounter.notes, ...notes };
+    currentEncounter.insights = analyzeEncounter(currentEncounter);
+    await persist();
+    renderNotesPanel();
+    renderInsightsPanel();
+    showToast('Notes generated', 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function generateAiSummary() {
+  try {
+    const result = await generateSummary(currentEncounter, hasAiConfigured() ? 'concise' : 'concise');
+    currentEncounter.insights = {
+      ...analyzeEncounter(currentEncounter),
+      summary: result.summary || result.subjective || '',
+    };
+    await persist();
+    renderInsightsPanel();
+    showToast(hasAiConfigured() ? 'AI summary generated' : 'Extractive summary generated', 'success');
+  } catch (e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function extractEncounterActions() {
+  let actions = extractActions(currentEncounter.segments, currentEncounter.actions);
+  try {
+    actions = await extractActionsWithAi(currentEncounter, actions);
+  } catch {
+    /* keep rule-based */
+  }
+  currentEncounter.actions = actions;
+  await persist();
+  renderActionsPanel();
+  showToast(`Found ${actions.length} action items`, 'success');
+}
+
+function renderSettings() {
+  const settings = getAppSettings();
+  const ai = getAiSettings();
+  const el = document.getElementById('view-settings');
+  el.innerHTML = `
+    <form class="settings-form" id="settings-form">
+      <fieldset>
+        <legend>General</legend>
+        <label>Timezone
+          <input name="timezone" value="${escapeHtml(settings.timezone)}">
+        </label>
+        <label>Language (BCP 47)
+          <input name="language" value="${escapeHtml(settings.language)}">
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
+          Enable enhanced transcription (Whisper, large download)
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="darkMode" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}>
+          Dark mode
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Speakers</legend>
+        <div id="speakers-editor">
+          ${settings.speakers
+            .map(
+              (s, i) => `
+            <div class="speaker-row">
+              <input name="speaker-name-${i}" value="${escapeHtml(s.name)}" aria-label="Speaker ${i + 1} name">
+              <input type="color" name="speaker-color-${i}" value="${s.color}" aria-label="Speaker ${i + 1} color">
+            </div>`
+            )
+            .join('')}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>AI (optional)</legend>
+        <p class="muted">Stored locally. Uses OpenAI-compatible API.</p>
+        <label>API base URL
+          <input name="baseUrl" value="${escapeHtml(ai.baseUrl || 'https://api.openai.com/v1')}" placeholder="https://api.openai.com/v1">
+        </label>
+        <label>API key
+          <input name="apiKey" type="password" value="${escapeHtml(ai.apiKey || '')}" autocomplete="off">
+        </label>
+        <label>Model
+          <input name="model" value="${escapeHtml(ai.model || 'gpt-4o-mini')}">
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Data</legend>
+        <button class="btn btn-secondary" type="button" id="btn-export-all">Export current encounter</button>
+        <button class="btn btn-danger" type="button" id="btn-clear-data">Clear all data</button>
+      </fieldset>
+      <button class="btn btn-primary" type="submit">Save settings</button>
+    </form>`;
+
+  el.querySelector('#settings-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const speakers = settings.speakers.map((s, i) => ({
+      id: s.id,
+      name: fd.get(`speaker-name-${i}`) || s.name,
+      color: fd.get(`speaker-color-${i}`) || s.color,
+    }));
+    const appSettings = {
+      timezone: fd.get('timezone'),
+      language: fd.get('language'),
+      enhancedTranscription: fd.get('enhancedTranscription') === 'on',
+      speakers,
+    };
+    saveAppSettings(appSettings);
+    saveAiSettings({
+      baseUrl: fd.get('baseUrl'),
+      apiKey: fd.get('apiKey'),
+      model: fd.get('model'),
+    });
+    document.documentElement.dataset.theme = fd.get('darkMode') === 'on' ? 'dark' : 'light';
+    localStorage.setItem('lucy-theme', document.documentElement.dataset.theme);
+    showToast('Settings saved', 'success');
+  });
+
+  el.querySelector('#btn-clear-data')?.addEventListener('click', async () => {
+    if (!confirm('Delete ALL encounters and data? This cannot be undone.')) return;
+    await clearAllData();
+    currentEncounter = null;
+    showToast('All data cleared', 'info');
+    navigate('home');
+    refreshHome();
+  });
+
+  el.querySelector('#btn-export-all')?.addEventListener('click', () => {
+    if (!currentEncounter) {
+      showToast('Open a session first', 'error');
+      return;
+    }
+    exportEncounter(currentEncounter, 'json');
+  });
+}
+
+function setupTabs() {
+  document.querySelectorAll('.tab-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === `panel-${tab}`));
+    });
+  });
+}
+
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea, [contenteditable]')) return;
+    if (e.key === 'r' || e.key === 'R') {
+      if (!recording) startRecording();
+      else stopRecording();
+    }
+    if (e.key === 's' || e.key === 'S') {
+      if (!diarizer || !currentEncounter?.speakers?.length) return;
+      const idx = currentEncounter.speakers.findIndex((s) => s.id === diarizer.activeSpeakerId);
+      const next = currentEncounter.speakers[(idx + 1) % currentEncounter.speakers.length];
+      diarizer.setActiveSpeaker(next.id);
+      renderRecordPanel();
+      showToast(`Speaker: ${next.name}`, 'info', 1500);
+    }
+  });
+}
+
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+}
+
+async function init() {
+  loadTheme();
+  initUi();
+  setupTabs();
+  setupKeyboardShortcuts();
+  registerServiceWorker();
+
+  document.getElementById('btn-new')?.addEventListener('click', startNewSession);
+  document.getElementById('btn-back')?.addEventListener('click', () => {
+    if (recording) {
+      if (!confirm('Recording in progress. Stop and go back?')) return;
+      stopRecording().then(() => {
+        navigate('home');
+        refreshHome();
+      });
+      return;
+    }
+    navigate('home');
+    refreshHome();
+  });
+  document.getElementById('btn-settings')?.addEventListener('click', () => {
+    renderSettings();
+    navigate('settings');
+  });
+  const searchInput = document.getElementById('search-input');
+  searchInput?.addEventListener('input', (e) => refreshHome(e.target.value));
+  document.getElementById('session-search')?.addEventListener('input', (e) => {
+    transcriptFilter = e.target.value;
+    renderTranscriptPanel();
+  });
+  document.getElementById('session-title-input')?.addEventListener('change', async (e) => {
+    if (!currentEncounter) return;
+    currentEncounter.title = e.target.value.trim() || 'Untitled encounter';
+    document.getElementById('header-title').textContent = currentEncounter.title;
+    await persist();
+  });
+
+  document.querySelectorAll('[data-export]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (!currentEncounter) return showToast('No session open', 'error');
+      try {
+        exportEncounter(currentEncounter, btn.dataset.export);
+        showToast(`Exported ${btn.dataset.export.toUpperCase()}`, 'success');
+      } catch (e) {
+        showToast(e.message, 'error');
+      }
+    });
+  });
+
+  await refreshHome();
+  navigate('home');
+}
+
+init();
