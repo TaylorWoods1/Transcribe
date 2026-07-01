@@ -243,18 +243,61 @@ body {
   align-items: stretch;
   padding: 0;
   gap: 0;
+  overflow: visible;
 }
 
 .encounter-open {
   flex: 1;
   min-width: 0;
   text-align: left;
-  padding: 14px 16px;
+  padding: 14px 12px 14px 16px;
   background: none;
   border: none;
   cursor: pointer;
   color: inherit;
   font: inherit;
+}
+
+.btn-delete {
+  flex-shrink: 0;
+  align-self: center;
+  margin: 8px 10px 8px 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-delete:active {
+  background: color-mix(in srgb, var(--danger) 20%, var(--surface));
+}
+
+.encounter-card .action-delete,
+.action-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch);
+  height: var(--touch);
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.action-delete:hover,
+.action-delete:active {
+  color: var(--danger);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
 }
 
 .encounter-title {
@@ -275,10 +318,10 @@ body {
   overflow-wrap: anywhere;
 }
 
-.btn-delete { color: var(--text-muted); flex-shrink: 0; }
-.btn-delete:hover { color: var(--danger); background: var(--surface-2); }
-
-.empty-state {
+.btn-delete:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
   text-align: center;
   padding: 48px 24px;
   color: var(--text-muted);

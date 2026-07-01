@@ -75,7 +75,7 @@ export function renderEncounterList(encounters, handlers = {}) {
             <span class="encounter-title">${escapeHtml(enc.title)}</span>
             <span class="encounter-meta">${formatDate(enc.updatedAt)} · ${formatDuration(enc.durationMs || 0)} · ${(enc.segments || []).length} seg.</span>
           </button>
-          <button class="btn-icon btn-delete" type="button" data-id="${enc.id}" aria-label="Delete ${escapeHtml(enc.title)}">✕</button>
+          <button class="btn-delete" type="button" data-id="${enc.id}" aria-label="Delete ${escapeHtml(enc.title)}">Delete</button>
         </li>`
         )
         .join('')}
