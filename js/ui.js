@@ -351,6 +351,89 @@ export function updateLiveTranscriptFeed(segments, speakers, options = {}) {
   if (feed) feed.scrollTop = feed.scrollHeight;
 }
 
+export function renderLiveAssistSuggestions(assist, { loading = false, enabled = true } = {}) {
+  if (!enabled) {
+    return `
+      <div class="assist-panel">
+        <p class="muted">Live assist is off. Enable it in Settings.</p>
+      </div>`;
+  }
+
+  const disclaimer = `<div class="assist-disclaimer copy-contained" role="note">${escapeHtml(getDisclaimer())}</div>`;
+
+  if (loading) {
+    return `
+      <div class="assist-panel">
+        ${disclaimer}
+        <div class="assist-loading">
+          <span class="live-spinner" aria-hidden="true"></span>
+          <span>Updating AI suggestions…</span>
+        </div>
+      </div>`;
+  }
+
+  const flags = (assist?.considerations || [])
+    .map(
+      (f) =>
+        `<div class="alert alert-danger assist-alert" role="alert">${escapeHtml(f.message || f.keyword)}</div>`
+    )
+    .join('');
+
+  const questions = (assist?.questions || [])
+    .map(
+      (q) =>
+        `<li class="assist-item assist-question">
+          <span class="assist-item-text copy-contained">${escapeHtml(q.text)}</span>
+          ${q.reason ? `<span class="assist-item-meta">${escapeHtml(q.reason)}</span>` : ''}
+        </li>`
+    )
+    .join('');
+
+  const responses = (assist?.responses || [])
+    .map(
+      (r) =>
+        `<li class="assist-item assist-response assist-response-${r.type || 'clarify'}">
+          <span class="assist-response-type">${escapeHtml(r.type || 'suggestion')}</span>
+          <span class="assist-item-text copy-contained">${escapeHtml(r.text)}</span>
+        </li>`
+    )
+    .join('');
+
+  const differentials = (assist?.differentials || [])
+    .map(
+      (d) =>
+        `<li class="assist-item assist-diff assist-diff-${d.urgency || 'routine'}">
+          <span class="assist-diff-urgency">${escapeHtml(d.urgency || 'routine')}</span>
+          <span class="assist-item-text copy-contained">${escapeHtml(d.text)}</span>
+          ${d.reason ? `<span class="assist-item-meta">Triggered by: ${escapeHtml(d.reason)}</span>` : ''}
+        </li>`
+    )
+    .join('');
+
+  const hasContent = flags || questions || responses || differentials;
+  const sourceLabel = assist?.source
+    ? `<p class="assist-source muted">Source: ${escapeHtml(assist.source === 'mixed' ? 'rules + AI' : assist.source)}</p>`
+    : '';
+
+  if (!hasContent) {
+    return `
+      <div class="assist-panel">
+        ${disclaimer}
+        <p class="muted assist-empty">Suggestions will appear as the conversation builds — questions to ask, phrasing ideas, and differentials to consider.</p>
+      </div>`;
+  }
+
+  return `
+    <div class="assist-panel">
+      ${disclaimer}
+      ${flags}
+      ${questions ? `<section class="assist-section card"><h3>Suggested questions</h3><ul class="assist-list">${questions}</ul></section>` : ''}
+      ${responses ? `<section class="assist-section card"><h3>Response ideas</h3><ul class="assist-list">${responses}</ul></section>` : ''}
+      ${differentials ? `<section class="assist-section card"><h3>Differentials to consider</h3><ul class="assist-list">${differentials}</ul></section>` : ''}
+      ${sourceLabel}
+    </div>`;
+}
+
 export function setTheme(dark) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   localStorage.setItem('lucy-theme', dark ? 'dark' : 'light');

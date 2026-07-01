@@ -138,3 +138,57 @@ export async function extractActionsWithAi(encounter, ruleBasedActions) {
     return ruleBasedActions;
   }
 }
+
+/** Real-time assist suggestions from live transcript (optional API). */
+export async function generateLiveAssistWithAi({ segments, speakers }) {
+  if (!hasAiConfigured()) return null;
+  const settings = getAiSettings();
+  const transcript = buildTranscriptText(segments, speakers);
+  if (!transcript.trim()) return null;
+
+  const url = `${settings.baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: settings.model || 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You are a clinical documentation and consultation-support assistant. Suggest follow-up questions, empathic response phrasing, and differential diagnoses to CONSIDER — not definitive diagnoses. Output valid JSON only. Never state medical advice as fact. Documentation support only.',
+        },
+        {
+          role: 'user',
+          content: `Based on this partial live encounter transcript, suggest up to 4 follow-up questions, 3 response phrases the clinician could use, and up to 4 differential diagnoses to consider (with urgency: routine or urgent). Return JSON:
+{"questions":[{"text":"","reason":""}],"responses":[{"text":"","type":"empathy|clarify|plan|safety"}],"differentials":[{"text":"","urgency":"routine|urgent","reason":""}]}
+
+Transcript:
+${transcript}`,
+        },
+      ],
+      temperature: 0.35,
+      response_format: { type: 'json_object' },
+    }),
+  });
+
+  if (!res.ok) return null;
+  const data = await res.json();
+  try {
+    const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}');
+    return {
+      questions: (parsed.questions || []).filter((q) => q.text?.trim()),
+      responses: (parsed.responses || []).filter((r) => r.text?.trim()),
+      differentials: (parsed.differentials || []).filter((d) => d.text?.trim()),
+      considerations: [],
+      source: 'ai',
+      updatedAt: Date.now(),
+      segmentCount: (segments || []).length,
+    };
+  } catch {
+    return null;
+  }
+}

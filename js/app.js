@@ -30,8 +30,9 @@ import {
 import { DiarizationTracker } from './diarize.js';
 import { generateNotesFromSegments } from './notes.js';
 import { extractActions, toggleAction, updateActionText, deleteAction, addAction } from './actions.js';
-import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured } from './ai.js';
+import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
+import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import { exportEncounter } from './export.js';
 import {
   initUi,
@@ -49,6 +50,7 @@ import {
   renderLiveAssist,
   renderLiveTranscriptFeed,
   updateLiveTranscriptFeed,
+  renderLiveAssistSuggestions,
   loadTheme,
   formatDuration,
   escapeHtml,
@@ -71,6 +73,10 @@ let activeSegmentId = null;
 let transcriptFilter = '';
 let liveStatus = null;
 let liveUiTimer = null;
+let liveAssistSuggestions = createEmptyAssist();
+let liveAssistAiTimer = null;
+let liveAssistAiLoading = false;
+let liveAssistSegmentFingerprint = '';
 let useChunkedLive = false;
 /** View to return to from settings (home | session) */
 let returnView = 'home';
@@ -180,6 +186,8 @@ function getDefaultAppSettings() {
     timezone: CONFIG.defaultTimezone,
     language: CONFIG.defaultLanguage,
     enhancedTranscription: false,
+    liveAssistEnabled: true,
+    liveAssistAi: true,
     speakers: [...CONFIG.defaultSpeakers],
     darkMode: null,
   };
@@ -264,6 +272,8 @@ async function showSession(encounter) {
   }
 
   resetSessionTabs();
+  liveAssistSuggestions = createEmptyAssist();
+  liveAssistSegmentFingerprint = '';
   renderSession();
   navigate('session');
   scheduleWhisperWarm();
@@ -450,13 +460,85 @@ function renderInsightsPanel() {
 
 function renderLiveAssistPanel() {
   const el = document.getElementById('panel-assist');
+  const settings = getAppSettings();
+  const segments =
+    recording && diarizer ? diarizer.getLiveSegments() : currentEncounter?.segments || [];
+
+  if (!settings.liveAssistEnabled) {
+    el.innerHTML = renderLiveAssistSuggestions(null, { enabled: false });
+    return;
+  }
+
+  if (
+    settings.liveAssistEnabled &&
+    (segments?.length || 0) >= CONFIG.liveAssistMinSegments &&
+    !recording
+  ) {
+    liveAssistSuggestions = analyzeLiveAssist(segments, currentEncounter?.speakers || []);
+  }
+
+  el.innerHTML = renderLiveAssistSuggestions(liveAssistSuggestions, {
+    loading: liveAssistAiLoading,
+    enabled: true,
+  });
+}
+
+function getAssistFingerprint(segments) {
+  return (segments || [])
+    .filter((s) => s.isFinal !== false && s.text?.trim())
+    .map((s) => s.id + ':' + s.text.length)
+    .join('|');
+}
+
+function refreshLiveAssist() {
+  const settings = getAppSettings();
+  if (!settings.liveAssistEnabled || !currentEncounter) {
+    liveAssistSuggestions = createEmptyAssist();
+    renderLiveAssistPanel();
+    return;
+  }
+
   const segments =
     recording && diarizer ? diarizer.getLiveSegments() : currentEncounter.segments || [];
-  el.innerHTML = renderLiveTranscriptFeed(segments, currentEncounter.speakers || [], {
-    status: recording ? liveStatus : null,
-    activeSpeakerId: diarizer?.activeSpeakerId,
-    partialId: diarizer?._partialId,
-  });
+  const fingerprint = getAssistFingerprint(segments);
+
+  if (fingerprint !== liveAssistSegmentFingerprint) {
+    liveAssistSegmentFingerprint = fingerprint;
+    liveAssistSuggestions = analyzeLiveAssist(segments, currentEncounter.speakers || []);
+    renderLiveAssistPanel();
+    scheduleLiveAssistAi(segments);
+  }
+}
+
+function scheduleLiveAssistAi(segments) {
+  const settings = getAppSettings();
+  if (!settings.liveAssistEnabled || !settings.liveAssistAi || !hasAiConfigured()) return;
+  if ((segments || []).filter((s) => s.text?.trim()).length < CONFIG.liveAssistMinSegments) return;
+
+  if (liveAssistAiTimer) clearTimeout(liveAssistAiTimer);
+  liveAssistAiTimer = setTimeout(async () => {
+    liveAssistAiTimer = null;
+    if (!currentEncounter) return;
+    const latest =
+      recording && diarizer ? diarizer.getLiveSegments() : currentEncounter.segments || [];
+    liveAssistAiLoading = true;
+    renderLiveAssistPanel();
+    try {
+      const ai = await generateLiveAssistWithAi({
+        segments: latest,
+        speakers: currentEncounter.speakers,
+      });
+      if (ai) {
+        const rules = analyzeLiveAssist(latest, currentEncounter.speakers);
+        liveAssistSuggestions = mergeAssistSuggestions(rules, ai);
+      }
+    } catch {
+      /* keep rule-based suggestions */
+    } finally {
+      liveAssistAiLoading = false;
+      renderLiveAssistPanel();
+    }
+  }, CONFIG.liveAssistAiDebounceMs);
 }
 
 async function persist() {
@@ -514,6 +596,8 @@ async function startRecording() {
       speakers: currentEncounter.speakers,
       activeSpeakerId: currentEncounter.speakers[0]?.id,
     });
+    liveAssistSegmentFingerprint = '';
+    liveAssistSuggestions = createEmptyAssist();
     liveStatus = createLiveStatus({ phase: 'listening', detail: 'Listening…' });
 
     if (isLiveTranscriptionSupported()) {
@@ -612,6 +696,12 @@ async function stopRecording() {
   recording = false;
   paused = false;
   liveStatus = null;
+  liveAssistSegmentFingerprint = '';
+  if (liveAssistAiTimer) {
+    clearTimeout(liveAssistAiTimer);
+    liveAssistAiTimer = null;
+  }
+  liveAssistAiLoading = false;
   if (result?.blob) currentEncounter.audioBlob = result.blob;
   if (result?.durationMs) currentEncounter.durationMs = result.durationMs;
   syncSegments({ live: false });
@@ -624,6 +714,7 @@ async function stopRecording() {
   currentEncounter.insights = analyzeEncounter(currentEncounter);
   await persist();
   renderSession();
+  refreshLiveAssist();
   showToast('Recording saved', 'success');
 
   const settings = getAppSettings();
@@ -643,7 +734,7 @@ function scheduleLiveUIUpdate() {
       status: liveStatus,
       activeSpeakerId: diarizer.activeSpeakerId,
     });
-    renderLiveAssistPanel();
+    refreshLiveAssist();
   }, CONFIG.liveUiThrottleMs);
 }
 
@@ -827,6 +918,18 @@ function renderSettings() {
         </label>
       </fieldset>
       <fieldset>
+        <legend>Live clinical assist</legend>
+        <p class="muted">Real-time suggestions during recording: follow-up questions, response phrasing, and differentials to consider. Rule-based instantly; AI enhances when configured below.</p>
+        <label class="checkbox">
+          <input type="checkbox" name="liveAssistEnabled" ${settings.liveAssistEnabled !== false ? 'checked' : ''}>
+          Show live assist suggestions
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="liveAssistAi" ${settings.liveAssistAi !== false ? 'checked' : ''}>
+          Use AI for assist (when API key set)
+        </label>
+      </fieldset>
+      <fieldset>
         <legend>Enhanced transcription (Whisper)</legend>
         <p class="muted">Runs fully on your device. Required for transcription on iPhone (live speech-to-text is not available in Safari).</p>
         <div id="whisper-status-wrap">${renderWhisperStatusHtml(whisperStatus)}</div>
@@ -887,6 +990,8 @@ function renderSettings() {
       timezone: fd.get('timezone'),
       language: fd.get('language'),
       enhancedTranscription: fd.get('enhancedTranscription') === 'on',
+      liveAssistEnabled: fd.get('liveAssistEnabled') === 'on',
+      liveAssistAi: fd.get('liveAssistAi') === 'on',
       speakers,
     };
     saveAppSettings(appSettings);

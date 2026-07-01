@@ -59,4 +59,8 @@ export const CONFIG = {
 
   whisperModel: 'Xenova/whisper-tiny.en',
   whisperCdn: 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2',
+
+  /** Live clinical assist */
+  liveAssistAiDebounceMs: 6000,
+  liveAssistMinSegments: 1,
 };
