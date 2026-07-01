@@ -18,6 +18,8 @@ export class LiveTranscriber {
     this.onError = onError || (() => {});
     this.active = false;
     this.startedAt = 0;
+    this.totalPausedMs = 0;
+    this._pausedAt = 0;
 
     this.recognition.onresult = (event) => {
       let interim = '';
@@ -26,14 +28,14 @@ export class LiveTranscriber {
         const text = result[0].transcript.trim();
         if (!text) continue;
         if (result.isFinal) {
-          const endMs = Date.now() - this.startedAt;
+          const endMs = this.getElapsedMs();
           this.onFinal({ text, endMs, confidence: result[0].confidence });
         } else {
           interim += text + ' ';
         }
       }
       if (interim.trim()) {
-        this.onPartial({ text: interim.trim(), endMs: Date.now() - this.startedAt });
+        this.onPartial({ text: interim.trim(), endMs: this.getElapsedMs() });
       }
     };
 
@@ -56,6 +58,8 @@ export class LiveTranscriber {
   start() {
     this.active = true;
     this.startedAt = Date.now();
+    this.totalPausedMs = 0;
+    this._pausedAt = 0;
     this.recognition.start();
   }
 
@@ -66,6 +70,35 @@ export class LiveTranscriber {
     } catch {
       /* ignore */
     }
+  }
+
+  pause() {
+    this.active = false;
+    this._pausedAt = Date.now();
+    try {
+      this.recognition.stop();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  resume() {
+    if (this._pausedAt) {
+      this.totalPausedMs += Date.now() - this._pausedAt;
+      this._pausedAt = 0;
+    }
+    this.active = true;
+    try {
+      this.recognition.start();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  getElapsedMs() {
+    if (!this.startedAt) return 0;
+    const pauseExtra = this._pausedAt ? Date.now() - this._pausedAt : 0;
+    return Math.max(0, Date.now() - this.startedAt - this.totalPausedMs - pauseExtra);
   }
 
   setLanguage(lang) {

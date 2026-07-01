@@ -23,12 +23,35 @@ export class DiarizationTracker {
     this.silenceGapMs = silenceGapMs;
     this.activeSpeakerId = activeSpeakerId || speakers?.[0]?.id || 'spk-1';
     this.lastSpeechEndMs = 0;
+    this.lastSpeechStartMs = 0;
+    this.manualSpeakerLockUntil = 0;
     this.segments = [];
     this._partialId = null;
   }
 
-  setActiveSpeaker(speakerId) {
+  setActiveSpeaker(speakerId, { manual = true } = {}) {
     this.activeSpeakerId = speakerId;
+    if (manual) {
+      this.manualSpeakerLockUntil = Date.now() + CONFIG.manualSpeakerLockMs;
+    }
+  }
+
+  onSpeechStart(ms) {
+    this.lastSpeechStartMs = ms;
+  }
+
+  onSpeechEnd(ms) {
+    this.lastSpeechEndMs = ms;
+    if (Date.now() < this.manualSpeakerLockUntil) return;
+    if (this.speakers.length <= 1) return;
+    const gap = this.lastSpeechEndMs && this.lastSpeechStartMs
+      ? this.lastSpeechEndMs - this.lastSpeechStartMs
+      : 0;
+    if (gap > this.silenceGapMs) {
+      const idx = this.speakers.findIndex((s) => s.id === this.activeSpeakerId);
+      const next = this.speakers[(idx + 1) % this.speakers.length];
+      if (next) this.activeSpeakerId = next.id;
+    }
   }
 
   addSpeakers(speakers) {
@@ -63,7 +86,11 @@ export class DiarizationTracker {
   onFinal({ text, endMs, confidence }) {
     if (!text) return null;
     const gap = this.lastSpeechEndMs ? endMs - this.lastSpeechEndMs : 0;
-    if (gap > this.silenceGapMs && this.speakers.length > 1) {
+    if (
+      gap > this.silenceGapMs &&
+      this.speakers.length > 1 &&
+      Date.now() >= this.manualSpeakerLockUntil
+    ) {
       const idx = this.speakers.findIndex((s) => s.id === this.activeSpeakerId);
       const next = this.speakers[(idx + 1) % this.speakers.length];
       if (next) this.activeSpeakerId = next.id;
@@ -130,6 +157,32 @@ export class DiarizationTracker {
 
   getSegments() {
     return this.segments.filter((s) => s.isFinal !== false && s.text?.trim());
+  }
+
+  /** Includes in-progress partial for live UI */
+  getLiveSegments() {
+    return this.segments.filter((s) => s.text?.trim());
+  }
+
+  getActiveSpeaker() {
+    return this.speakers.find((s) => s.id === this.activeSpeakerId) || null;
+  }
+
+  addChunkSegments(chunkSegments, defaultSpeakerId) {
+    for (const w of chunkSegments) {
+      if (!w.text?.trim()) continue;
+      this.segments.push(
+        createSegment({
+          speakerId: defaultSpeakerId || this.activeSpeakerId,
+          startMs: w.startMs,
+          endMs: w.endMs,
+          text: w.text,
+          confidence: w.confidence,
+        })
+      );
+    }
+    this._partialId = null;
+    return this.segments;
   }
 }
 
