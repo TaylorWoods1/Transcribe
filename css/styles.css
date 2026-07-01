@@ -240,64 +240,55 @@ body {
 
 .encounter-card {
   display: flex;
-  align-items: stretch;
-  padding: 0;
-  gap: 0;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   overflow: visible;
 }
 
 .encounter-open {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   text-align: left;
-  padding: 14px 12px 14px 16px;
+  padding: 14px 16px;
   background: none;
   border: none;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   color: inherit;
   font: inherit;
 }
 
-.btn-delete {
-  flex-shrink: 0;
-  align-self: center;
-  margin: 8px 10px 8px 0;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
-  color: var(--danger);
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.btn-delete:active {
-  background: color-mix(in srgb, var(--danger) 20%, var(--surface));
-}
-
-.encounter-card .action-delete,
-.action-delete {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--touch);
-  height: var(--touch);
-  flex-shrink: 0;
+.encounter-delete {
+  display: block;
+  width: 100%;
+  min-height: var(--touch);
+  padding: 12px 16px;
   border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1.1rem;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: #fef2f2;
+  color: #b91c1c;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: center;
   cursor: pointer;
 }
 
-.action-delete:hover,
-.action-delete:active {
-  color: var(--danger);
-  background: var(--surface-2);
-  border-radius: var(--radius-sm);
+[data-theme='dark'] .encounter-delete {
+  background: #3f1d1d;
+  color: #fca5a5;
+}
+
+.encounter-delete:active {
+  filter: brightness(0.95);
+}
+
+.encounter-delete:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: -2px;
 }
 
 .encounter-title {
@@ -316,11 +307,6 @@ body {
   margin-top: 4px;
   line-height: 1.4;
   overflow-wrap: anywhere;
-}
-
-.btn-delete:focus-visible {
-  outline: 2px solid var(--danger);
-  outline-offset: 2px;
 }
 
 .empty-state {
@@ -560,6 +546,26 @@ body {
   border-radius: 4px;
   padding: 4px;
   margin: -4px;
+}
+
+.action-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch);
+  height: var(--touch);
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.action-delete:active {
+  color: var(--danger);
+  background: var(--surface-2);
 }
 
 /* Notes */
