@@ -25,22 +25,27 @@ async function mockStandalonePwa(page) {
   });
 }
 
+async function waitForAppReady(page) {
+  await page.goto('/');
+  await page.waitForSelector('html[data-app-ready="1"]', { timeout: 15000 });
+}
+
 test.describe('Tiger PWA smoke', () => {
   test.beforeEach(async ({ page }) => {
     await mockStandalonePwa(page);
     await page.addInitScript(() => {
-      sessionStorage.setItem('tiger-coi-reload', '1');
+      sessionStorage.setItem('tiger-coi-reload', '3');
       localStorage.setItem('tiger-deploy-id', 'dev');
     });
   });
   test('home page loads with app title', async ({ page }) => {
-    await page.goto('/');
+    await waitForAppReady(page);
     await expect(page.locator('#header-title')).toHaveText('Tiger');
     await expect(page.locator('#btn-new')).toBeVisible();
   });
 
   test('creates a new session and shows record UI', async ({ page }) => {
-    await page.goto('/');
+    await waitForAppReady(page);
     await page.locator('#btn-new').click();
     await expect(page.locator('#header-title')).not.toHaveText('Tiger');
     await expect(page.getByRole('button', { name: /record/i })).toBeVisible();
@@ -49,7 +54,7 @@ test.describe('Tiger PWA smoke', () => {
   });
 
   test('settings page shows runtime and whisper panels', async ({ page }) => {
-    await page.goto('/');
+    await waitForAppReady(page);
     await page.getByRole('button', { name: /settings/i }).click();
     await expect(page.getByText('Enhanced transcription (Whisper)')).toBeVisible();
     await expect(page.getByText('On-device runtime')).toBeVisible();
@@ -75,7 +80,7 @@ test.describe('Tiger PWA smoke', () => {
   });
 
   test('service worker registers', async ({ page }) => {
-    await page.goto('/');
+    await waitForAppReady(page);
     const registered = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return false;
       const { CONFIG } = await import('./config.js');
@@ -96,7 +101,7 @@ test.describe('Install gate', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      sessionStorage.setItem('tiger-coi-reload', '1');
+      sessionStorage.setItem('tiger-coi-reload', '3');
       localStorage.setItem('tiger-deploy-id', 'dev');
     });
   });

@@ -4,6 +4,36 @@
 import { CONFIG } from '../config.js';
 import { escapeHtml } from './lib/utils.js';
 
+export function isWebKitSafari(ua = navigator.userAgent || '') {
+  return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|EdgiOS|FxiOS/i.test(ua);
+}
+
+export function getExpectedCoepMode(ua = navigator.userAgent || '') {
+  return isWebKitSafari(ua) ? 'require-corp' : 'credentialless';
+}
+
+export function isServiceWorkerControlling() {
+  return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller;
+}
+
+/** Live capture + Whisper chunk sizes — shorter slices when WASM is single-threaded. */
+export function getLiveCaptureTiming(caps = getRuntimeCapabilities()) {
+  if (caps.canMultiThreadWasm) {
+    return {
+      chunkIntervalMs: CONFIG.liveChunkIntervalMs,
+      chunkMinMs: CONFIG.liveChunkMinMs,
+      whisperChunkLengthS: CONFIG.whisperLiveChunkLengthS,
+      whisperStrideS: CONFIG.whisperLiveStrideS,
+    };
+  }
+  return {
+    chunkIntervalMs: CONFIG.liveChunkIntervalMsSingleThread ?? 1800,
+    chunkMinMs: CONFIG.liveChunkMinMsSingleThread ?? 900,
+    whisperChunkLengthS: CONFIG.whisperLiveChunkLengthSingleThreadS ?? 6,
+    whisperStrideS: CONFIG.whisperLiveStrideSingleThreadS ?? 1,
+  };
+}
+
 export function getRuntimeCapabilities() {
   const ua = navigator.userAgent || '';
   const isIOS = /iPad|iPhone|iPod/.test(ua);
@@ -42,7 +72,13 @@ export function getRuntimeCapabilities() {
       : 1,
     localLlmFeasible: tier !== 'low' && (memoryGb == null || memoryGb >= 4),
     speakerDiarizationLocal: false,
-    streamingAsrCeiling: tier === 'high' ? '~1–3s behind speech' : '~3–8s behind speech',
+    streamingAsrCeiling: canMultiThreadWasm
+      ? tier === 'high'
+        ? '~1–3s behind speech'
+        : '~2–5s behind speech'
+      : tier === 'high'
+        ? '~3–6s behind speech'
+        : '~3–8s behind speech',
     notes: buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU, tier }),
   };
 }
@@ -58,9 +94,19 @@ function estimateDeviceTier({ cores, memoryGb, canMultiThreadWasm, hasWebGPU }) 
 function buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU, tier }) {
   const notes = [];
   if (!crossOriginIsolated) {
-    notes.push(
-      'Cross-origin isolation is off — WASM runs single-threaded (~3–4× slower). Reload after update to enable threading.'
-    );
+    if (isIOS && isWebKitSafari()) {
+      notes.push(
+        'Safari uses require-corp isolation (credentialless is unsupported). Open Tiger from your home screen icon and reload once — multi-thread WASM should turn on.'
+      );
+    } else if (!isServiceWorkerControlling()) {
+      notes.push(
+        'Service worker is not controlling this page yet — reload once so COOP/COEP headers apply (~3–4× faster WASM).'
+      );
+    } else {
+      notes.push(
+        'Cross-origin isolation is off — WASM runs single-threaded (~3–4× slower). Reload after update to enable threading.'
+      );
+    }
   } else if (canMultiThreadWasm) {
     notes.push('Multi-thread WASM active — using all available CPU cores for Whisper.');
   }
@@ -90,11 +136,15 @@ export async function probeWebGPU() {
 }
 
 export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
+  const swControlling = isServiceWorkerControlling();
+  const coepMode = getExpectedCoepMode();
   const rows = [
     ['Device tier', caps.tier],
     ['CPU cores', caps.cores ?? 'unknown'],
     ['Device memory', caps.memoryGb != null ? `${caps.memoryGb} GB (reported)` : 'unknown'],
     ['PWA installed', caps.isStandalone ? 'Yes' : 'No'],
+    ['Service worker', swControlling ? 'Controlling' : 'Not controlling'],
+    ['COEP mode (expected)', coepMode],
     ['Cross-origin isolated', caps.crossOriginIsolated ? 'Yes' : 'No'],
     ['SharedArrayBuffer', caps.hasSharedArrayBuffer ? 'Yes' : 'No'],
     ['Multi-thread WASM', caps.canMultiThreadWasm ? `Yes (${caps.wasmThreads} threads)` : 'No'],
@@ -109,6 +159,11 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
     .map((n) => `<li class="copy-contained">${escapeHtml(n)}</li>`)
     .join('');
 
+  const reloadBtn =
+    !caps.crossOriginIsolated && typeof window !== 'undefined'
+      ? `<p class="runtime-actions"><button type="button" class="btn btn-sm" id="btn-coi-reload">Reload to enable threading</button></p>`
+      : '';
+
   return `
     <div class="runtime-caps card" id="runtime-caps-panel">
       <h3>On-device runtime</h3>
@@ -122,5 +177,6 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
           .join('')}
       </dl>
       ${notes ? `<ul class="runtime-notes">${notes}</ul>` : ''}
+      ${reloadBtn}
     </div>`;
 }

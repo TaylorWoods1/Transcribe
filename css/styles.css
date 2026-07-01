@@ -965,6 +965,10 @@ body {
   margin-bottom: 6px;
 }
 
+.runtime-actions {
+  margin-top: 12px;
+}
+
 .whisper-status {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

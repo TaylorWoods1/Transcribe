@@ -51,7 +51,7 @@ npm run check
 ### Whisper on iPhone
 1. Settings → download Whisper model
 2. Enable **Auto-transcribe after recording**
-3. Check **On-device runtime** shows multi-thread WASM after one reload
+3. Check **On-device runtime** shows **Multi-thread WASM: Yes** after one reload from the home screen icon
 
 ## Privacy model
 
