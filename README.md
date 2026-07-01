@@ -30,6 +30,23 @@ A local-first, vanilla Progressive Web App for clinical encounter transcription,
 - Confidence scores on Whisper segments
 - Offline transcription via imported audio files
 
+## Live app (GitHub Pages)
+
+Once deployed, the app is available at:
+
+**https://taylorwoods1.github.io/Transcribe/**
+
+### Install on iPhone / iPad (Add to Home Screen)
+
+1. Open **Safari** and go to `https://taylorwoods1.github.io/Transcribe/`
+2. Tap the **Share** button (square with arrow)
+3. Scroll down and tap **Add to Home Screen**
+4. Name it **Lucy** and tap **Add**
+
+The app opens full-screen like a native app. Your data stays on the device in IndexedDB.
+
+> **iOS notes:** Live speech-to-text requires Chrome on desktop; on iOS Safari you can record audio and use **Enhanced transcription** (Whisper) or edit transcripts manually. Microphone access works in the installed PWA on iOS 16.4+.
+
 ## Local development
 
 No install or build step required. Serve the repository root as static files:
@@ -108,7 +125,16 @@ icons/icon.svg
 
 ## Deployment
 
-Pushes to `main` deploy to GitHub Pages via `peaceiris/actions-gh-pages@v4`. A `.nojekyll` file is included for correct static serving.
+Pushes to `main` automatically deploy to GitHub Pages via `peaceiris/actions-gh-pages@v4` (publishes the `gh-pages` branch).
+
+**One-time GitHub setup:**
+
+1. Open your repo → **Settings** → **Pages**
+2. Under **Build and deployment**, set **Source** to **Deploy from a branch**
+3. Choose branch **`gh-pages`** and folder **`/ (root)`**
+4. Save — the site will be live at `https://taylorwoods1.github.io/Transcribe/` within a minute or two
+
+Or use **GitHub Actions** as the Pages source if your repo offers that option (either works after the first deploy creates `gh-pages`).
 
 ## Disclaimer
 

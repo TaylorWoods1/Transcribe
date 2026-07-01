@@ -1,4 +1,4 @@
-const CACHE = 'lucy-scribe-v1';
+const CACHE = 'lucy-scribe-v2';
 const SHELL = [
   './',
   './index.html',
@@ -18,6 +18,9 @@ const SHELL = [
   './js/export.js',
   './js/ui.js',
   './icons/icon.svg',
+  './icons/apple-touch-icon.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
 ];
 
 self.addEventListener('install', (event) => {
