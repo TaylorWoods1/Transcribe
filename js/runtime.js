@@ -135,9 +135,21 @@ export async function probeWebGPU() {
   }
 }
 
+export function getCoiBlockerReason(caps = getRuntimeCapabilities()) {
+  if (caps.crossOriginIsolated) return null;
+  if (!isServiceWorkerControlling()) {
+    return 'Service worker is not controlling this page yet. Reload once so isolation headers can apply.';
+  }
+  if (caps.isIOS && !caps.isStandalone) {
+    return 'Open Tiger from your home screen icon (not Safari) — browser tabs cannot enable multi-thread WASM on iPhone.';
+  }
+  return 'This page loaded without cross-origin isolation. Use the button below to fetch a fresh copy with threading enabled.';
+}
+
 export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
   const swControlling = isServiceWorkerControlling();
   const coepMode = getExpectedCoepMode();
+  const blocker = getCoiBlockerReason(caps);
   const rows = [
     ['Device tier', caps.tier],
     ['CPU cores', caps.cores ?? 'unknown'],
@@ -160,7 +172,7 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
     .join('');
 
   const reloadBtn =
-    !caps.crossOriginIsolated && typeof window !== 'undefined'
+    blocker && typeof window !== 'undefined'
       ? `<p class="runtime-actions"><button type="button" class="btn btn-sm" id="btn-coi-reload">Reload to enable threading</button></p>`
       : '';
 
@@ -168,6 +180,7 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
     <div class="runtime-caps card" id="runtime-caps-panel">
       <h3>On-device runtime</h3>
       <p class="muted">What this iPhone/browser can actually use for local AI. PWAs cannot access the Neural Engine directly.</p>
+      ${blocker ? `<p class="runtime-coi-hint">${escapeHtml(blocker)}</p>` : ''}
       <dl class="runtime-caps-grid">
         ${rows
           .map(
