@@ -65,6 +65,12 @@ test.describe('Tiger PWA smoke', () => {
 });
 
 test.describe('Install prompt', () => {
+  test.use({
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+    viewport: { width: 390, height: 844 },
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       sessionStorage.setItem('tiger-coi-reload', '1');
@@ -80,7 +86,7 @@ test.describe('Install prompt', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#install-prompt')).toBeVisible({ timeout: 8000 });
     await expect(page.getByRole('heading', { name: /Install Tiger/i })).toBeVisible();
-    await page.locator('#install-prompt-got-it').click();
+    await page.getByRole('button', { name: 'Got it' }).click();
     await expect(page.locator('#install-prompt')).toHaveCount(0);
   });
 });

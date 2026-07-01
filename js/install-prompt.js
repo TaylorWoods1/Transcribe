@@ -1,203 +1,241 @@
-/**
- * Browser-only overlay teaching users how to install Tiger as a home-screen PWA.
- */
-import { CONFIG } from '../config.js';
 import { STORAGE_KEYS } from './lib/storage-keys.js';
-import { escapeHtml } from './lib/utils.js';
 
-/**
- * @param {boolean} isIOS
- * @returns {Array<{title: string, detail: string, icon: string}>}
- */
-export function getInstallSteps(isIOS) {
-  if (isIOS) {
+const DISMISSED_KEY = STORAGE_KEYS.INSTALL_PROMPT_DISMISSED;
+const SEEN_KEY = STORAGE_KEYS.INSTALL_PROMPT_SEEN;
+const STEP_INTERVAL_MS = 2800;
+
+function isStandaloneMode() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
+function isDismissed() {
+  try {
+    return localStorage.getItem(DISMISSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markSeen() {
+  try {
+    sessionStorage.setItem(SEEN_KEY, '1');
+  } catch {
+    /* private browsing */
+  }
+}
+
+function wasSeenThisSession() {
+  try {
+    return sessionStorage.getItem(SEEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function dismiss(permanent) {
+  if (permanent) {
+    try {
+      localStorage.setItem(DISMISSED_KEY, '1');
+    } catch {
+      /* private browsing */
+    }
+  }
+  markSeen();
+}
+
+function getSteps(platform) {
+  if (platform === 'ios') {
     return [
       {
-        icon: 'share',
         title: 'Tap Share',
-        detail: 'In Safari, tap the Share button at the bottom of the screen.',
+        body: 'In Safari, tap the Share button at the bottom of the screen.',
+        icon: 'share',
       },
       {
-        icon: 'add',
         title: 'Add to Home Screen',
-        detail: 'Scroll the menu and choose “Add to Home Screen”.',
+        body: 'Scroll the menu and choose “Add to Home Screen”.',
+        icon: 'add',
       },
       {
+        title: 'Open from your icon',
+        body: 'Launch Tiger from the home screen for the best experience.',
         icon: 'home',
-        title: 'Open Tiger from your Home Screen',
-        detail: 'Launch the app from the new icon for Whisper and offline use.',
       },
     ];
   }
 
   return [
     {
+      title: 'Open the menu',
+      body: 'Tap the browser menu (⋮) in Chrome or Edge.',
       icon: 'menu',
-      title: 'Open the browser menu',
-      detail: 'Tap the menu (⋮) in Chrome or your browser toolbar.',
     },
     {
-      icon: 'install',
-      title: 'Install or add to Home Screen',
-      detail: 'Choose “Install app” or “Add to Home screen”.',
+      title: 'Install app',
+      body: 'Choose “Install app” or “Add to Home screen”.',
+      icon: 'add',
     },
     {
+      title: 'Open from your icon',
+      body: 'Launch Tiger from your home screen or app drawer.',
       icon: 'home',
-      title: 'Open Tiger from your Home Screen',
-      detail: 'Use the installed app for the best recording experience.',
     },
   ];
 }
 
-function readStorageFlag(storage, key) {
-  try {
-    return storage.getItem(key) === '1';
-  } catch {
-    return false;
+function stepIconMarkup(icon) {
+  if (icon === 'share') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10"/><path d="M8 7l4-4 4 4"/><rect x="5" y="11" width="14" height="10" rx="2"/></svg>';
   }
-}
-
-function writeStorageFlag(storage, key) {
-  try {
-    storage.setItem(key, '1');
-  } catch {
-    /* private browsing may block storage */
+  if (icon === 'add') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/></svg>';
   }
+  if (icon === 'menu') {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></svg>';
+  }
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10.5 12 4l8 6.5"/><path d="M6 10v9h12v-9"/></svg>';
 }
 
-/**
- * @param {{ isStandalone: boolean }} caps
- * @param {Storage} [local]
- * @param {Storage} [session]
- * @returns {boolean}
- */
-export function shouldShowInstallPrompt(
-  caps,
-  local = localStorage,
-  session = sessionStorage
-) {
-  if (caps.isStandalone) return false;
-  if (readStorageFlag(local, STORAGE_KEYS.INSTALL_PROMPT_DISMISSED)) return false;
-  if (readStorageFlag(session, STORAGE_KEYS.INSTALL_PROMPT_SEEN)) return false;
-  return true;
-}
-
-/**
- * @param {boolean} isIOS
- * @returns {string}
- */
-export function renderInstallPromptHtml(isIOS) {
-  const steps = getInstallSteps(isIOS);
-  const platform = isIOS ? 'ios' : 'android';
-  const stepsHtml = steps
+function buildMarkup(platform) {
+  const steps = getSteps(platform);
+  const stepMarkup = steps
     .map(
       (step, index) => `
-      <li class="install-step" data-step="${index}" style="--step-index: ${index}">
-        <span class="install-step-icon install-step-icon-${step.icon}" aria-hidden="true"></span>
-        <div>
-          <strong>${escapeHtml(step.title)}</strong>
-          <p>${escapeHtml(step.detail)}</p>
-        </div>
-      </li>`
+        <li class="install-step${index === 0 ? ' is-active' : ''}" data-step="${index}">
+          <span class="install-step-icon">${stepIconMarkup(step.icon)}</span>
+          <div>
+            <strong>${step.title}</strong>
+            <p>${step.body}</p>
+          </div>
+        </li>
+      `
     )
     .join('');
 
   return `
-    <div class="install-prompt" id="install-prompt" role="dialog" aria-modal="true" aria-labelledby="install-prompt-title">
-      <button type="button" class="install-prompt-backdrop" aria-label="Close install guide"></button>
-      <div class="install-prompt-card">
-        <div class="install-demo install-demo-${platform}" aria-hidden="true">
+    <div class="install-prompt-backdrop"></div>
+    <div class="install-prompt-card" role="dialog" aria-modal="true" aria-labelledby="install-prompt-title">
+      <button type="button" class="install-prompt-close" data-install-close aria-label="Close install guide">×</button>
+      <div class="install-prompt-body">
+        <div class="install-prompt-visual" aria-hidden="true">
           <div class="install-phone">
+            <div class="install-phone-notch"></div>
             <div class="install-phone-screen">
-              <div class="install-phone-header">${escapeHtml(CONFIG.appName)}</div>
-              <div class="install-phone-body">
-                <span class="install-phone-pulse"></span>
-              </div>
-              ${
-                isIOS
-                  ? `<div class="install-phone-toolbar">
-                      <span class="install-phone-tool"></span>
-                      <span class="install-phone-tool install-phone-tool-share">
-                        <span class="install-share-icon"></span>
-                        <span class="install-pointer" aria-hidden="true"></span>
-                      </span>
-                      <span class="install-phone-tool"></span>
-                    </div>`
-                  : `<div class="install-phone-toolbar install-phone-toolbar-android">
-                      <span class="install-android-menu">
-                        <span class="install-pointer install-pointer-menu" aria-hidden="true"></span>
-                      </span>
-                    </div>`
-              }
+              <div class="install-phone-app-icon"></div>
+              <div class="install-phone-share-hint"></div>
             </div>
           </div>
-          <div class="install-step-dots">
-            ${steps.map((_, i) => `<span class="install-step-dot" data-dot="${i}"></span>`).join('')}
+          <div class="install-dots">
+            <span class="install-dot is-active"></span>
+            <span class="install-dot"></span>
+            <span class="install-dot"></span>
           </div>
         </div>
-        <h2 id="install-prompt-title">Install ${escapeHtml(CONFIG.appName)} on your device</h2>
-        <p class="install-prompt-lead">
-          Tiger works best as an installed app — especially for iPhone Whisper transcription and offline sessions.
-        </p>
-        <ol class="install-steps install-steps-${platform}">
-          ${stepsHtml}
-        </ol>
-        <div class="install-prompt-actions">
-          <button type="button" class="btn btn-primary" id="install-prompt-got-it">Got it</button>
-          <button type="button" class="btn btn-secondary" id="install-prompt-dismiss">Don't show again</button>
+        <div class="install-prompt-copy">
+          <h2 id="install-prompt-title">Install Tiger on your device</h2>
+          <p>Tiger works best as an installed app — especially for iPhone Whisper transcription and offline sessions.</p>
         </div>
+        <ol class="install-steps">${stepMarkup}</ol>
       </div>
-    </div>`;
+      <div class="install-prompt-actions">
+        <button type="button" class="btn btn-primary" data-install-ok>Got it</button>
+        <button type="button" class="btn btn-ghost" data-install-never>Don't show again</button>
+      </div>
+    </div>
+  `;
+}
+
+function startStepHighlight(overlay) {
+  const steps = [...overlay.querySelectorAll('.install-step')];
+  const dots = [...overlay.querySelectorAll('.install-dot')];
+  if (!steps.length) return () => {};
+
+  let index = 0;
+  const timer = window.setInterval(() => {
+    index = (index + 1) % steps.length;
+    steps.forEach((step, i) => step.classList.toggle('is-active', i === index));
+    dots.forEach((dot, i) => dot.classList.toggle('is-active', i === index));
+  }, STEP_INTERVAL_MS);
+
+  return () => window.clearInterval(timer);
+}
+
+export function getInstallSteps(isIOS) {
+  return getSteps(isIOS ? 'ios' : 'android');
+}
+
+export function shouldShowInstallPrompt({ isStandalone }, localStorage, sessionStorage) {
+  if (isStandalone) return false;
+  try {
+    if (localStorage.getItem(DISMISSED_KEY) === '1') return false;
+    if (sessionStorage.getItem(SEEN_KEY) === '1') return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+function getInstallPlatform(capabilities) {
+  if (capabilities.platform === 'ios' || capabilities.platform === 'android') {
+    return capabilities.platform;
+  }
+  if (capabilities.isIOS) return 'ios';
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  if (/Android/i.test(ua)) return 'android';
+  return 'desktop';
 }
 
 /**
- * @param {{ isIOS: boolean, isStandalone: boolean }} caps
- * @param {{ onDismiss?: (permanent: boolean) => void }} [options]
- * @returns {(() => void)|null} cleanup
+ * @param {{ platform?: 'ios' | 'android' | 'desktop', isIOS?: boolean }} capabilities
  */
-export function mountInstallPrompt(caps, options = {}) {
-  if (!shouldShowInstallPrompt(caps)) return null;
-  if (document.getElementById('install-prompt')) return null;
+export function scheduleInstallPrompt(capabilities) {
+  const platform = getInstallPlatform(capabilities);
+  if (isStandaloneMode() || isDismissed() || wasSeenThisSession()) return;
+  if (platform !== 'ios' && platform !== 'android') return;
 
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = renderInstallPromptHtml(caps.isIOS);
-  const root = wrapper.firstElementChild;
-  if (!root) return null;
+  const mount = () => {
+    if (document.getElementById('install-prompt')) return;
 
-  document.body.appendChild(root);
-  requestAnimationFrame(() => root.classList.add('visible'));
+    const overlay = document.createElement('div');
+    overlay.id = 'install-prompt';
+    overlay.className = 'install-prompt-overlay';
+    overlay.innerHTML = buildMarkup(platform);
+    document.body.appendChild(overlay);
+    document.body.classList.add('install-prompt-open');
 
-  const close = (permanent) => {
-    root.classList.remove('visible');
-    setTimeout(() => root.remove(), 280);
-    if (permanent) {
-      writeStorageFlag(localStorage, STORAGE_KEYS.INSTALL_PROMPT_DISMISSED);
-    } else {
-      writeStorageFlag(sessionStorage, STORAGE_KEYS.INSTALL_PROMPT_SEEN);
-    }
-    options.onDismiss?.(permanent);
+    const stopHighlight = startStepHighlight(overlay);
+    let closed = false;
+
+    const close = (permanent) => {
+      if (closed) return;
+      closed = true;
+      stopHighlight();
+      dismiss(permanent);
+      overlay.remove();
+      document.body.classList.remove('install-prompt-open');
+    };
+
+    overlay.querySelector('[data-install-close]')?.addEventListener('click', () => close(false));
+    overlay.querySelector('[data-install-ok]')?.addEventListener('click', () => close(false));
+    overlay.querySelector('[data-install-never]')?.addEventListener('click', () => close(true));
+    overlay.querySelector('.install-prompt-backdrop')?.addEventListener('click', () => close(false));
   };
 
-  root.querySelector('#install-prompt-got-it')?.addEventListener('click', () => close(false));
-  root.querySelector('#install-prompt-dismiss')?.addEventListener('click', () => close(true));
-  root.querySelector('.install-prompt-backdrop')?.addEventListener('click', () => close(false));
-
-  return () => close(false);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(mount);
+  });
 }
 
-/**
- * Show after app shell is stable (post-COI reload). Safe to call multiple times.
- * @param {{ isIOS: boolean, isStandalone: boolean }} caps
- */
-export function scheduleInstallPrompt(caps) {
-  if (!shouldShowInstallPrompt(caps)) return;
-
-  const show = () => mountInstallPrompt(caps);
-
-  if (document.readyState === 'complete') {
-    requestAnimationFrame(() => requestAnimationFrame(show));
-    return;
+export function resetInstallPromptForTests() {
+  document.getElementById('install-prompt')?.remove();
+  document.body.classList.remove('install-prompt-open');
+  try {
+    localStorage.removeItem(DISMISSED_KEY);
+    sessionStorage.removeItem(SEEN_KEY);
+  } catch {
+    /* ignore */
   }
-
-  window.addEventListener('load', () => requestAnimationFrame(show), { once: true });
 }
