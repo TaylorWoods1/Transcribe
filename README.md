@@ -45,8 +45,8 @@ npm run check
 **URL:** https://taylorwoods1.github.io/Transcribe/
 
 ### Install on iPhone
-1. Open Safari → URL above
-2. Share → **Add to Home Screen** → name **Tiger**
+1. Open Safari → URL above — an install guide appears the first time in the browser
+2. Follow the animated steps: Share → **Add to Home Screen** → name **Tiger**
 
 ### Whisper on iPhone
 1. Settings → download Whisper model

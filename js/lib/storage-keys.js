@@ -9,6 +9,7 @@ export const STORAGE_KEYS = Object.freeze({
   WHISPER_STATUS: 'tiger-whisper-status',
   COI_RELOAD: 'tiger-coi-reload',
   DEPLOY_ID: 'tiger-deploy-id',
+  INSTALL_PROMPT_DISMISSED: 'tiger-install-prompt-dismissed',
   DB_FLAGS: 'tiger-db-flags',
 });
 

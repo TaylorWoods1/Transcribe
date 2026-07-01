@@ -33,6 +33,7 @@ import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings,
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
+import { mountInstallPrompt } from './install-prompt.js';
 import {
   STORAGE_KEYS,
   migrateStorageKeys,
@@ -1164,6 +1165,9 @@ async function init() {
   setupTabs();
   setupKeyboardShortcuts();
   await registerServiceWorker();
+
+  const caps = getRuntimeCapabilities();
+  setTimeout(() => mountInstallPrompt(caps), 600);
 
   document.getElementById('main')?.addEventListener('click', (e) => {
     const newBtn = e.target.closest('#btn-new, #btn-new-empty');

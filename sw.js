@@ -29,6 +29,7 @@ const SHELL = [
   './js/ai.js',
   './js/insights.js',
   './js/assist.js',
+  './js/install-prompt.js',
   './js/runtime.js',
   './js/lib/utils.js',
   './js/lib/clinical.js',
