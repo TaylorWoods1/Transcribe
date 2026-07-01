@@ -60,9 +60,10 @@ js/ui.js                               DOM rendering
 
 ## Service worker
 
-- Cache name: `tiger-scribe-v14` (bump on breaking shell changes)
-- Injects **COOP/COEP** and **Content-Security-Policy** headers on HTML (required for Safari WASM)
-- **Network-first** for HTML so CSP/security updates are not stuck behind cache
+- Cache name: `tiger-scribe-v15` (bump on breaking shell changes)
+- Injects **COOP/COEP** and **Content-Security-Policy** HTTP headers on HTML (required for Safari WASM)
+- Strips any legacy `<meta>` CSP from cached HTML to prevent dual-policy blocks
+- **Network-first** for HTML; install wipes all prior caches
 - Does **not** cache Whisper models from CDN
 
 ## Testing

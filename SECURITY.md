@@ -37,7 +37,7 @@ Tiger is a **client-only PWA**. All clinical data (audio, transcripts, notes) is
 - **HTML escaping** — user-facing strings rendered via `escapeHtml()` in `js/lib/utils.js`
 - **Color sanitization** — speaker colors validated as hex (`sanitizeColor`)
 - **AI URL validation** — HTTPS-only base URLs; credentials in URL rejected (`normalizeBaseUrl`)
-- **Content-Security-Policy** — in `index.html` (meta) and injected as an **HTTP header** by `sw.js` on HTML responses. Safari/WebKit requires the header for on-device Whisper (ONNX WebAssembly). Uses `'wasm-unsafe-eval'` plus `'unsafe-eval'` fallback for older iOS; `worker-src` includes `https://cdn.jsdelivr.net` for ONNX workers.
+- **Content-Security-Policy** — injected as an **HTTP header only** by `sw.js` on HTML responses (no meta tag, to avoid conflicting policies from stale cache). Safari/WebKit requires the header for on-device Whisper. Uses `'wasm-unsafe-eval'` plus `'unsafe-eval'` fallback; `worker-src` includes `https://cdn.jsdelivr.net`.
 - **Cross-origin isolation** — COOP/COEP via service worker for WASM threading (not for security isolation of clinical data)
 - **No eval** — no `eval`, `new Function`, or `document.write`
 
