@@ -246,15 +246,63 @@ export function renderInsights(insights) {
 }
 
 export function renderLiveAssist(segments, speakers) {
-  const recent = (segments || []).slice(-3);
-  if (!recent.length) return '<p class="muted">Live assist activates during recording.</p>';
+  return renderLiveTranscriptFeed(segments, speakers, { maxHeight: true });
+}
+
+export function renderLiveTranscriptFeed(segments, speakers, { partialId, statusText, activeSpeakerId } = {}) {
   const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
-  return recent
-    .map((s) => {
-      const sp = speakerMap[s.speakerId];
-      return `<p class="copy-contained"><strong style="color:${sp?.color}">${escapeHtml(sp?.name || 'Speaker')}:</strong> ${escapeHtml(s.text)}</p>`;
+  const list = segments || [];
+  const active = speakers?.find((s) => s.id === activeSpeakerId);
+
+  const status = statusText
+    ? `<p class="live-capture-status" id="live-capture-status">${escapeHtml(statusText)}</p>`
+    : '<p class="live-capture-status" id="live-capture-status">Listening…</p>';
+
+  const speakerBar = active
+    ? `<div class="live-active-speaker" style="--speaker-color:${active.color}">
+        <span class="live-pulse" aria-hidden="true"></span>
+        <span>Speaking: <strong>${escapeHtml(active.name)}</strong></span>
+      </div>`
+    : '';
+
+  if (!list.length) {
+    return `
+      <section class="live-capture" aria-label="Live transcript">
+        ${speakerBar}
+        ${status}
+        <p class="muted live-empty">Conversation will appear here as you speak.</p>
+      </section>`;
+  }
+
+  const rows = list
+    .map((seg) => {
+      const sp = speakerMap[seg.speakerId] || { name: 'Speaker', color: '#666' };
+      const isPartial = seg.isFinal === false || seg.id === partialId;
+      return `
+      <div class="live-line ${isPartial ? 'live-line-partial' : ''}" data-id="${seg.id}">
+        <span class="live-line-time">${formatTimestamp(seg.startMs || 0)}</span>
+        <span class="live-line-speaker" style="color:${sp.color}">${escapeHtml(sp.name)}</span>
+        <span class="live-line-text copy-contained">${escapeHtml(seg.text)}</span>
+      </div>`;
     })
     .join('');
+
+  return `
+    <section class="live-capture" aria-label="Live transcript">
+      ${speakerBar}
+      ${status}
+      <div class="live-transcript-feed" id="live-transcript-feed" aria-live="polite" aria-atomic="false">
+        ${rows}
+      </div>
+    </section>`;
+}
+
+export function updateLiveTranscriptFeed(segments, speakers, options = {}) {
+  const wrap = document.getElementById('live-capture-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = renderLiveTranscriptFeed(segments, speakers, options);
+  const feed = document.getElementById('live-transcript-feed');
+  if (feed) feed.scrollTop = feed.scrollHeight;
 }
 
 export function setTheme(dark) {

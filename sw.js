@@ -1,4 +1,4 @@
-const CACHE = 'tiger-scribe-v6';
+const CACHE = 'tiger-scribe-v7';
 const SHELL = [
   './',
   './index.html',
@@ -10,6 +10,8 @@ const SHELL = [
   './js/audio.js',
   './js/transcribe-live.js',
   './js/transcribe-whisper.js',
+  './js/transcribe-chunked.js',
+  './js/vad.js',
   './js/diarize.js',
   './js/notes.js',
   './js/actions.js',

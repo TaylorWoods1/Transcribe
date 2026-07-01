@@ -22,6 +22,12 @@ export const CONFIG = {
   /** VAD: silence gap (ms) before auto speaker turn */
   silenceGapMs: 1200,
 
+  /** Live capture */
+  liveChunkIntervalMs: 5000,
+  liveUiThrottleMs: 120,
+  speechEnergyThreshold: 0.035,
+  manualSpeakerLockMs: 4000,
+
   /** Red-flag keywords (Tier 3 stretch, included) */
   redFlagKeywords: [
     'chest pain',

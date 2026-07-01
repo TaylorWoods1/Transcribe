@@ -2,10 +2,12 @@
  * Audio capture via MediaRecorder + Web Audio waveform.
  */
 export class AudioRecorder {
-  constructor({ onWaveform, onChunk, onError } = {}) {
+  constructor({ onWaveform, onChunk, onError, onEnergy, chunkIntervalMs = 1000 } = {}) {
     this.onWaveform = onWaveform || (() => {});
     this.onChunk = onChunk || (() => {});
     this.onError = onError || (() => {});
+    this.onEnergy = onEnergy || (() => {});
+    this.chunkIntervalMs = chunkIntervalMs;
     this.stream = null;
     this.mediaRecorder = null;
     this.audioContext = null;
@@ -42,7 +44,7 @@ export class AudioRecorder {
       }
     };
     this.mediaRecorder.onerror = (e) => this.onError(e.error || new Error('Recording failed'));
-    this.mediaRecorder.start(1000);
+    this.mediaRecorder.start(this.chunkIntervalMs);
     this.startedAt = Date.now();
     this.totalPausedMs = 0;
     this.isPaused = false;
@@ -95,6 +97,10 @@ export class AudioRecorder {
     return Math.max(0, now - this.startedAt - this.totalPausedMs);
   }
 
+  getMimeType() {
+    return this.mimeType || 'audio/webm';
+  }
+
   _startWaveform() {
     if (!this.analyser) return;
     const data = new Uint8Array(this.analyser.frequencyBinCount);
@@ -102,6 +108,7 @@ export class AudioRecorder {
       this.analyser.getByteFrequencyData(data);
       const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
       this.onWaveform(avg);
+      this.onEnergy(avg);
       this.animationId = requestAnimationFrame(tick);
     };
     tick();
