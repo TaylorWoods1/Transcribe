@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Lucy Scribe — local-first clinical transcription and note-taking PWA">
+  <meta name="theme-color" content="#1e3a5f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lucy">
+  <title>Lucy Scribe</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to content</a>
+
+  <header class="app-header">
+    <button id="btn-back" class="btn-icon" type="button" aria-label="Back" hidden>←</button>
+    <h1 id="header-title">Lucy Scribe</h1>
+    <div class="header-actions">
+      <button id="btn-settings" class="btn-icon" type="button" aria-label="Settings">⚙</button>
+    </div>
+  </header>
+
+  <main id="main" class="app-main">
+    <!-- Home -->
+    <section id="view-home" class="view active" aria-label="Encounters">
+      <div class="home-toolbar">
+        <input type="search" id="search-input" placeholder="Search encounters…" aria-label="Search encounters">
+        <button id="btn-new" class="btn btn-primary" type="button">+ New session</button>
+      </div>
+      <div id="home-list"></div>
+    </section>
+
+    <!-- Session -->
+    <section id="view-session" class="view" aria-label="Session">
+      <div class="session-header">
+        <input type="text" id="session-title-input" class="session-title" aria-label="Encounter title" value="New encounter">
+        <input type="search" id="session-search" placeholder="Search transcript…" aria-label="Search in transcript">
+        <div class="export-bar" role="group" aria-label="Export">
+          <button class="btn btn-sm" type="button" data-export="json">JSON</button>
+          <button class="btn btn-sm" type="button" data-export="md">MD</button>
+          <button class="btn btn-sm" type="button" data-export="txt">TXT</button>
+          <button class="btn btn-sm" type="button" data-export="srt">SRT</button>
+          <button class="btn btn-sm" type="button" data-export="vtt">VTT</button>
+          <button class="btn btn-sm" type="button" data-export="audio">Audio</button>
+        </div>
+      </div>
+
+      <nav class="tabs" role="tablist" aria-label="Session tabs">
+        <button class="tab-btn active" type="button" data-tab="record" role="tab" aria-selected="true">Record</button>
+        <button class="tab-btn" type="button" data-tab="transcript" role="tab">Transcript</button>
+        <button class="tab-btn" type="button" data-tab="notes" role="tab">Notes</button>
+        <button class="tab-btn" type="button" data-tab="actions" role="tab">Actions</button>
+        <button class="tab-btn" type="button" data-tab="insights" role="tab">Insights</button>
+        <button class="tab-btn" type="button" data-tab="assist" role="tab">Assist</button>
+      </nav>
+
+      <div class="tab-panels">
+        <div id="panel-record" class="tab-panel active" role="tabpanel"></div>
+        <div id="panel-transcript" class="tab-panel" role="tabpanel"></div>
+        <div id="panel-notes" class="tab-panel" role="tabpanel"></div>
+        <div id="panel-actions" class="tab-panel" role="tabpanel"></div>
+        <div id="panel-insights" class="tab-panel" role="tabpanel"></div>
+        <div id="panel-assist" class="tab-panel" role="tabpanel"></div>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view" aria-label="Settings"></section>
+  </main>
+
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
