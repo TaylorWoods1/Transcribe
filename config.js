@@ -22,11 +22,18 @@ export const CONFIG = {
   /** VAD: silence gap (ms) before auto speaker turn */
   silenceGapMs: 1200,
 
-  /** Live capture */
-  liveChunkIntervalMs: 5000,
-  liveUiThrottleMs: 120,
-  speechEnergyThreshold: 0.035,
+  /** Live capture — tuned for near-real-time on mobile */
+  liveChunkIntervalMs: 2500,
+  liveChunkMinMs: 1200,
+  liveChunkMaxQueue: 3,
+  liveUiThrottleMs: 80,
+  speechEnergyThreshold: 0.03,
   manualSpeakerLockMs: 4000,
+
+  /** Whisper live-chunk inference (shorter = faster per slice) */
+  whisperLiveChunkLengthS: 12,
+  whisperLiveStrideS: 2,
+  whisperWasmThreads: 4,
 
   /** Red-flag keywords (Tier 3 stretch, included) */
   redFlagKeywords: [

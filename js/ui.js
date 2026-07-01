@@ -245,18 +245,63 @@ export function renderInsights(insights) {
     ${questions ? `<section class="insight-block card"><h3>Questions asked</h3><ul class="copy-contained">${questions}</ul></section>` : ''}`;
 }
 
-export function renderLiveAssist(segments, speakers) {
-  return renderLiveTranscriptFeed(segments, speakers, { maxHeight: true });
+export function formatLiveStatusText(status) {
+  if (!status) return 'Listening…';
+  if (typeof status === 'string') return status;
+  const parts = [status.detail || ''];
+  if (status.queueLength > 0) parts.push(`${status.queueLength} queued`);
+  if (status.processingMs != null) parts.push(`${status.processingMs}ms`);
+  if (status.chunksSkipped > 0) parts.push(`${status.chunksSkipped} skipped`);
+  return parts.filter(Boolean).join(' · ');
 }
 
-export function renderLiveTranscriptFeed(segments, speakers, { partialId, statusText, activeSpeakerId } = {}) {
+export function renderLiveStatusBar(status) {
+  const phase =
+    typeof status === 'object' && status?.phase ? status.phase : status ? 'listening' : 'idle';
+  const detail = formatLiveStatusText(status);
+  const queue =
+    typeof status === 'object' && status?.queueLength > 0
+      ? `<span class="live-queue-badge" aria-label="${status.queueLength} chunks queued">${status.queueLength}</span>`
+      : '';
+  const spinner = phase === 'processing' || phase === 'loading' ? '<span class="live-spinner" aria-hidden="true"></span>' : '';
+
+  return `
+    <div class="live-capture-status live-capture-status-${phase}" id="live-capture-status" role="status" aria-live="polite">
+      ${spinner}
+      <span class="live-status-phase">${escapeHtml(phaseLabel(phase))}</span>
+      <span class="live-status-detail">${escapeHtml(detail)}</span>
+      ${queue}
+    </div>`;
+}
+
+function phaseLabel(phase) {
+  switch (phase) {
+    case 'loading':
+      return 'Loading';
+    case 'processing':
+      return 'Processing';
+    case 'queued':
+      return 'Queued';
+    case 'paused':
+      return 'Paused';
+    case 'listening':
+      return 'Listening';
+    default:
+      return 'Ready';
+  }
+}
+
+export function renderLiveAssist(segments, speakers, options = {}) {
+  return renderLiveTranscriptFeed(segments, speakers, { maxHeight: true, ...options });
+}
+
+export function renderLiveTranscriptFeed(segments, speakers, { partialId, statusText, status, activeSpeakerId } = {}) {
   const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
   const list = segments || [];
   const active = speakers?.find((s) => s.id === activeSpeakerId);
+  const liveStatus = status || statusText;
 
-  const status = statusText
-    ? `<p class="live-capture-status" id="live-capture-status">${escapeHtml(statusText)}</p>`
-    : '<p class="live-capture-status" id="live-capture-status">Listening…</p>';
+  const statusBar = renderLiveStatusBar(liveStatus);
 
   const speakerBar = active
     ? `<div class="live-active-speaker" style="--speaker-color:${active.color}">
@@ -269,7 +314,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
     return `
       <section class="live-capture" aria-label="Live transcript">
         ${speakerBar}
-        ${status}
+        ${statusBar}
         <p class="muted live-empty">Conversation will appear here as you speak.</p>
       </section>`;
   }
@@ -278,8 +323,9 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
     .map((seg) => {
       const sp = speakerMap[seg.speakerId] || { name: 'Speaker', color: '#666' };
       const isPartial = seg.isFinal === false || seg.id === partialId;
+      const isProcessing = isPartial && /transcrib/i.test(seg.text || '');
       return `
-      <div class="live-line ${isPartial ? 'live-line-partial' : ''}" data-id="${seg.id}">
+      <div class="live-line ${isPartial ? 'live-line-partial' : ''} ${isProcessing ? 'live-line-processing' : ''}" data-id="${seg.id}">
         <span class="live-line-time">${formatTimestamp(seg.startMs || 0)}</span>
         <span class="live-line-speaker" style="color:${sp.color}">${escapeHtml(sp.name)}</span>
         <span class="live-line-text copy-contained">${escapeHtml(seg.text)}</span>
@@ -290,7 +336,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
   return `
     <section class="live-capture" aria-label="Live transcript">
       ${speakerBar}
-      ${status}
+      ${statusBar}
       <div class="live-transcript-feed" id="live-transcript-feed" aria-live="polite" aria-atomic="false">
         ${rows}
       </div>

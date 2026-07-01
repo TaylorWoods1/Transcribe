@@ -452,6 +452,66 @@ body {
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
   font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.live-status-phase {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.live-status-detail {
+  flex: 1;
+  min-width: 0;
+}
+
+.live-capture-status-processing .live-status-phase,
+.live-capture-status-loading .live-status-phase {
+  color: var(--accent);
+}
+
+.live-capture-status-queued .live-status-phase {
+  color: var(--warning, #d97706);
+}
+
+.live-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: live-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+.live-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning, #d97706) 18%, var(--surface));
+  color: var(--warning, #d97706);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.live-line-processing .live-line-text {
+  color: var(--text-muted);
+}
+
+@keyframes live-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .live-transcript-feed {

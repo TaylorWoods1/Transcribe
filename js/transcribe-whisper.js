@@ -12,7 +12,9 @@ let pipelinePromise = null;
 let pipelineInstance = null;
 let loadProgress = null;
 let isTranscribing = false;
+let liveTranscribeCount = 0;
 const statusListeners = new Set();
+let envConfigured = false;
 
 function readStoredStatus() {
   try {
@@ -126,6 +128,42 @@ export function formatWhisperDownloadedAt(ts) {
   return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+function configureTransformersEnv(env) {
+  if (envConfigured) return;
+  env.allowLocalModels = false;
+  env.useBrowserCache = true;
+  const wasm = env.backends?.onnx?.wasm;
+  if (wasm) {
+    const threads = CONFIG.whisperWasmThreads || 4;
+    const cores =
+      typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : threads;
+    wasm.numThreads = Math.min(threads, Math.max(1, cores));
+    if ('simd' in wasm) wasm.simd = true;
+  }
+  envConfigured = true;
+}
+
+async function createPipeline(onProgress) {
+  const { pipeline, env } = await import(CONFIG.whisperCdn);
+  configureTransformersEnv(env);
+
+  const progress_callback = (p) => {
+    loadProgress = p;
+    onProgress?.(p);
+    notifyStatusListeners();
+  };
+
+  const baseOpts = { progress_callback };
+  try {
+    return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
+      ...baseOpts,
+      device: 'webgpu',
+    });
+  } catch {
+    return pipeline('automatic-speech-recognition', CONFIG.whisperModel, baseOpts);
+  }
+}
+
 export async function loadWhisperPipeline(onProgress) {
   if (pipelineInstance) {
     onProgress?.({ status: 'ready', progress: 100 });
@@ -138,16 +176,7 @@ export async function loadWhisperPipeline(onProgress) {
 
   pipelinePromise = (async () => {
     try {
-      const { pipeline, env } = await import(CONFIG.whisperCdn);
-      env.allowLocalModels = false;
-      env.useBrowserCache = true;
-      const pipe = await pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
-        progress_callback: (p) => {
-          loadProgress = p;
-          onProgress?.(p);
-          notifyStatusListeners();
-        },
-      });
+      const pipe = await createPipeline(onProgress);
       pipelineInstance = pipe;
       loadProgress = { status: 'ready', progress: 100 };
       writeStoredStatus({ state: 'cached', downloadedAt: Date.now(), error: null });
@@ -166,14 +195,18 @@ export async function loadWhisperPipeline(onProgress) {
   return pipelinePromise;
 }
 
+/** Warm-load model into memory without transcribing. */
+export async function warmWhisperPipeline(onProgress) {
+  return loadWhisperPipeline(onProgress);
+}
+
 /** Download / warm-load the model without transcribing audio. */
 export async function downloadWhisperModel(onProgress) {
   writeStoredStatus({ state: 'downloading', error: null });
   notifyStatusListeners();
   try {
     await loadWhisperPipeline(onProgress);
-    const status = getWhisperStatus();
-    return status;
+    return getWhisperStatus();
   } catch (err) {
     throw err;
   }
@@ -183,27 +216,48 @@ export function isWhisperReady() {
   return !!pipelineInstance;
 }
 
+export function isWhisperCached() {
+  const stored = readStoredStatus();
+  return !!stored.downloadedAt && stored.state !== 'error';
+}
+
+async function runPipeline(pipe, blob, { language, live = false } = {}) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const opts = {
+      chunk_length_s: live ? CONFIG.whisperLiveChunkLengthS : 30,
+      stride_length_s: live ? CONFIG.whisperLiveStrideS : 5,
+      language: language?.split('-')[0] || 'en',
+      return_timestamps: true,
+    };
+    const result = await pipe(url, opts);
+    writeStoredStatus({ lastUsedAt: Date.now() });
+    return normalizeWhisperResult(result);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 export async function transcribeBlob(blob, { language, onProgress } = {}) {
   isTranscribing = true;
   notifyStatusListeners();
   try {
     const pipe = await loadWhisperPipeline(onProgress);
-    const url = URL.createObjectURL(blob);
-    try {
-      const result = await pipe(url, {
-        chunk_length_s: 30,
-        stride_length_s: 5,
-        language: language?.split('-')[0] || 'en',
-        return_timestamps: true,
-      });
-      writeStoredStatus({ lastUsedAt: Date.now() });
-      return normalizeWhisperResult(result);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
+    return runPipeline(pipe, blob, { language, live: false });
   } finally {
     isTranscribing = false;
     notifyStatusListeners();
+  }
+}
+
+/** Faster path for live chunks — does not flip global "transcribing" status. */
+export async function transcribeLiveChunk(blob, { language } = {}) {
+  liveTranscribeCount += 1;
+  try {
+    const pipe = await loadWhisperPipeline();
+    return runPipeline(pipe, blob, { language, live: true });
+  } finally {
+    liveTranscribeCount -= 1;
   }
 }
 
@@ -213,14 +267,16 @@ function normalizeWhisperResult(result) {
     for (const chunk of result.chunks) {
       const startMs = Math.round((chunk.timestamp?.[0] || 0) * 1000);
       const endMs = Math.round((chunk.timestamp?.[1] || startMs / 1000 + 1) * 1000);
+      const text = (chunk.text || '').trim();
+      if (!text) continue;
       segments.push({
-        text: (chunk.text || '').trim(),
+        text,
         startMs,
         endMs,
         confidence: 0.85,
       });
     }
-  } else if (result.text) {
+  } else if (result.text?.trim()) {
     segments.push({ text: result.text.trim(), startMs: 0, endMs: 0, confidence: 0.8 });
   }
   return segments;

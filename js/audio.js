@@ -2,12 +2,20 @@
  * Audio capture via MediaRecorder + Web Audio waveform.
  */
 export class AudioRecorder {
-  constructor({ onWaveform, onChunk, onError, onEnergy, chunkIntervalMs = 1000 } = {}) {
+  constructor({
+    onWaveform,
+    onChunk,
+    onError,
+    onEnergy,
+    chunkIntervalMs = 1000,
+    speechThreshold = 0.03,
+  } = {}) {
     this.onWaveform = onWaveform || (() => {});
     this.onChunk = onChunk || (() => {});
     this.onError = onError || (() => {});
     this.onEnergy = onEnergy || (() => {});
     this.chunkIntervalMs = chunkIntervalMs;
+    this.speechThreshold = speechThreshold;
     this.stream = null;
     this.mediaRecorder = null;
     this.audioContext = null;
@@ -19,14 +27,26 @@ export class AudioRecorder {
     this.totalPausedMs = 0;
     this.isPaused = false;
     this.mimeType = 'audio/webm';
+    this.chunkMaxEnergy = 0;
+    this.lastChunkAt = 0;
+    this.lastFlushAt = 0;
   }
 
   async start() {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Microphone access is not supported in this browser.');
     }
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
     this.audioContext = new AudioContext();
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
     const source = this.audioContext.createMediaStreamSource(this.stream);
     this.analyser = this.audioContext.createAnalyser();
     this.analyser.fftSize = 256;
@@ -37,10 +57,17 @@ export class AudioRecorder {
     this.mimeType = types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
     this.mediaRecorder = new MediaRecorder(this.stream, this.mimeType ? { mimeType: this.mimeType } : {});
     this.chunks = [];
+    this.chunkMaxEnergy = 0;
+    this.lastChunkAt = Date.now();
+    this.lastFlushAt = this.lastChunkAt;
+
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         this.chunks.push(e.data);
-        this.onChunk(e.data);
+        const hadSpeech = this.chunkMaxEnergy >= this.speechThreshold;
+        this.onChunk(e.data, { hadSpeech, maxEnergy: this.chunkMaxEnergy });
+        this.chunkMaxEnergy = 0;
+        this.lastChunkAt = Date.now();
       }
     };
     this.mediaRecorder.onerror = (e) => this.onError(e.error || new Error('Recording failed'));
@@ -48,6 +75,20 @@ export class AudioRecorder {
     this.startedAt = Date.now();
     this.totalPausedMs = 0;
     this.isPaused = false;
+  }
+
+  /** Force an early chunk boundary (e.g. on end of speech). */
+  flushChunk() {
+    if (!this.mediaRecorder || this.mediaRecorder.state !== 'recording' || this.isPaused) return false;
+    const elapsed = Date.now() - this.lastFlushAt;
+    if (elapsed < 800) return false;
+    try {
+      this.mediaRecorder.requestData();
+      this.lastFlushAt = Date.now();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   pause() {
@@ -107,6 +148,7 @@ export class AudioRecorder {
     const tick = () => {
       this.analyser.getByteFrequencyData(data);
       const avg = data.reduce((a, b) => a + b, 0) / data.length / 255;
+      this.chunkMaxEnergy = Math.max(this.chunkMaxEnergy, avg);
       this.onWaveform(avg);
       this.onEnergy(avg);
       this.animationId = requestAnimationFrame(tick);
