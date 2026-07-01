@@ -48,9 +48,11 @@ export function formatDuration(ms) {
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
-export function renderEncounterList(encounters, { onOpen, onDelete, onNew }) {
+export function renderEncounterList(encounters, handlers = {}) {
+  const { onOpen, onDelete, onNew } = handlers;
   const root = document.getElementById('home-list');
   if (!root) return;
+
   if (!encounters.length) {
     root.innerHTML = `
       <div class="empty-state card">
@@ -59,7 +61,7 @@ export function renderEncounterList(encounters, { onOpen, onDelete, onNew }) {
         <p>Start a new session to record and transcribe a conversation.</p>
         <button class="btn btn-primary" id="btn-new-empty" type="button">New session</button>
       </div>`;
-    root.querySelector('#btn-new-empty')?.addEventListener('click', onNew);
+    root.querySelector('#btn-new-empty')?.addEventListener('click', () => onNew?.());
     return;
   }
 
@@ -80,12 +82,12 @@ export function renderEncounterList(encounters, { onOpen, onDelete, onNew }) {
     </ul>`;
 
   root.querySelectorAll('.encounter-open').forEach((btn) => {
-    btn.addEventListener('click', () => onOpen(btn.dataset.id));
+    btn.addEventListener('click', () => onOpen?.(btn.dataset.id));
   });
   root.querySelectorAll('.btn-delete').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      onDelete(btn.dataset.id);
+      onDelete?.(btn.dataset.id);
     });
   });
 }
@@ -103,15 +105,15 @@ export function buildWaveformHtml() {
   return `<div class="waveform" aria-hidden="true">${Array.from({ length: 32 }, () => '<div class="waveform-bar"></div>').join('')}</div>`;
 }
 
-export function renderTranscript(segments, speakers, { activeSegmentId, filter, onEdit, onSpeakerChange, onSeek }) {
-  const speakerMap = Object.fromEntries(speakers.map((s) => [s.id, s]));
+export function renderTranscript(segments, speakers, options = {}) {
+  const { activeSegmentId, filter } = options;
+  const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
   const q = (filter || '').toLowerCase();
-  const filtered = q
-    ? segments.filter((s) => s.text.toLowerCase().includes(q))
-    : segments;
+  const list = segments || [];
+  const filtered = q ? list.filter((s) => s.text.toLowerCase().includes(q)) : list;
 
   if (!filtered.length) {
-    return `<p class="muted">${segments.length ? 'No matching segments.' : 'Transcript will appear here during recording.'}</p>`;
+    return `<p class="muted">${list.length ? 'No matching segments.' : 'Transcript will appear here during recording.'}</p>`;
   }
 
   return `<div class="transcript-list" role="list">
@@ -124,7 +126,7 @@ export function renderTranscript(segments, speakers, { activeSegmentId, filter, 
         <div class="segment-header">
           <button class="segment-time" type="button" data-seek="${seg.startMs}" aria-label="Seek to ${formatTimestamp(seg.startMs)}">${formatTimestamp(seg.startMs)}</button>
           <select class="segment-speaker" data-id="${seg.id}" aria-label="Speaker for segment" style="--speaker-color:${sp.color}">
-            ${speakers.map((s) => `<option value="${s.id}" ${s.id === seg.speakerId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
+            ${(speakers || []).map((s) => `<option value="${s.id}" ${s.id === seg.speakerId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
           </select>
           ${seg.confidence != null ? `<span class="confidence" title="Confidence">${Math.round(seg.confidence * 100)}%</span>` : ''}
         </div>
@@ -135,9 +137,11 @@ export function renderTranscript(segments, speakers, { activeSegmentId, filter, 
   </div>`;
 }
 
-export function bindTranscriptEvents(container, { onEdit, onSpeakerChange, onSeek }) {
+export function bindTranscriptEvents(container, handlers = {}) {
+  if (!container) return;
+  const { onEdit, onSpeakerChange, onSeek } = handlers;
   container.querySelectorAll('.segment-text').forEach((el) => {
-    el.addEventListener('blur', () => onEdit(el.dataset.id, el.textContent.trim()));
+    el.addEventListener('blur', () => onEdit?.(el.dataset.id, el.textContent.trim()));
     el.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -146,14 +150,14 @@ export function bindTranscriptEvents(container, { onEdit, onSpeakerChange, onSee
     });
   });
   container.querySelectorAll('.segment-speaker').forEach((sel) => {
-    sel.addEventListener('change', () => onSpeakerChange(sel.dataset.id, sel.value));
+    sel.addEventListener('change', () => onSpeakerChange?.(sel.dataset.id, sel.value));
   });
   container.querySelectorAll('[data-seek]').forEach((btn) => {
-    btn.addEventListener('click', () => onSeek(Number(btn.dataset.seek)));
+    btn.addEventListener('click', () => onSeek?.(Number(btn.dataset.seek)));
   });
 }
 
-export function renderNotes(notes) {
+export function renderNotes(notes = {}) {
   return NOTE_SECTIONS.map(
     (sec) => `
     <label class="note-field">
@@ -165,12 +169,13 @@ export function renderNotes(notes) {
 }
 
 export function bindNotesEvents(container, onChange) {
+  if (!container || !onChange) return;
   container.querySelectorAll('textarea').forEach((ta) => {
     ta.addEventListener('input', () => onChange(ta.dataset.key, ta.value));
   });
 }
 
-export function renderActions(actions, { onToggle, onDelete, onAdd }) {
+export function renderActions(actions) {
   const items = (actions || [])
     .map(
       (a) => `
@@ -192,19 +197,21 @@ export function renderActions(actions, { onToggle, onDelete, onAdd }) {
     </div>`;
 }
 
-export function bindActionEvents(container, { onToggle, onDelete, onAdd }) {
+export function bindActionEvents(container, handlers = {}) {
+  if (!container) return;
+  const { onToggle, onDelete, onAdd } = handlers;
   container.querySelectorAll('input[type=checkbox]').forEach((cb) => {
-    cb.addEventListener('change', () => onToggle(cb.dataset.id));
+    cb.addEventListener('change', () => onToggle?.(cb.dataset.id));
   });
   container.querySelectorAll('.action-delete').forEach((btn) => {
-    btn.addEventListener('click', () => onDelete(btn.dataset.id));
+    btn.addEventListener('click', () => onDelete?.(btn.dataset.id));
   });
   const input = container.querySelector('#action-input');
   const addBtn = container.querySelector('#action-add-btn');
   const submit = () => {
     const text = input?.value.trim();
     if (text) {
-      onAdd(text);
+      onAdd?.(text);
       if (input) input.value = '';
     }
   };
@@ -239,13 +246,13 @@ export function renderInsights(insights) {
 }
 
 export function renderLiveAssist(segments, speakers) {
-  const recent = segments.slice(-3);
+  const recent = (segments || []).slice(-3);
   if (!recent.length) return '<p class="muted">Live assist activates during recording.</p>';
-  const speakerMap = Object.fromEntries(speakers.map((s) => [s.id, s]));
+  const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
   return recent
     .map((s) => {
       const sp = speakerMap[s.speakerId];
-      return `<p><strong style="color:${sp?.color}">${escapeHtml(sp?.name || 'Speaker')}:</strong> ${escapeHtml(s.text)}</p>`;
+      return `<p class="copy-contained"><strong style="color:${sp?.color}">${escapeHtml(sp?.name || 'Speaker')}:</strong> ${escapeHtml(s.text)}</p>`;
     })
     .join('');
 }
