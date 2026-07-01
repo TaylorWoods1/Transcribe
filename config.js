@@ -1,7 +1,7 @@
 /** App configuration — edit to personalize */
 export const CONFIG = {
-  appName: 'Lucy Scribe',
-  appShortName: 'Lucy',
+  appName: 'Tiger',
+  appShortName: 'Tiger',
   version: '1.0.0',
 
   /** Default timezone offset label (GMT+10) */

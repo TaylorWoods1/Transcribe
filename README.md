@@ -1,4 +1,4 @@
-# Lucy Scribe
+# Tiger
 
 > **Live app:** https://taylorwoods1.github.io/Transcribe/  
 > (Must include `/Transcribe/` — the root `taylorwoods1.github.io` URL will show “site not found”.)
@@ -46,7 +46,7 @@ A local-first, vanilla Progressive Web App for clinical encounter transcription,
 1. Open **Safari** and go to **https://taylorwoods1.github.io/Transcribe/**
 2. Tap the **Share** button (square with arrow)
 3. Scroll down and tap **Add to Home Screen**
-4. Name it **Lucy** and tap **Add**
+4. Name it **Tiger** and tap **Add**
 
 The app opens full-screen like a native app. Your data stays on the device in IndexedDB.
 

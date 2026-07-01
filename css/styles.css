@@ -1,4 +1,4 @@
-/* Lucy Scribe — clinical scribe aesthetic, mobile-first */
+/* Tiger — clinical scribe aesthetic, mobile-first */
 
 :root {
   --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -141,13 +141,26 @@ body {
 .btn-icon {
   width: var(--touch);
   height: var(--touch);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   background: transparent;
   color: inherit;
   font-size: 1.25rem;
   flex-shrink: 0;
+}
+
+#btn-back.is-visible,
+#btn-settings:not([hidden]) {
+  display: flex;
+}
+
+#btn-settings[hidden] {
+  display: none !important;
+}
+
+#btn-back[hidden] {
+  display: none !important;
 }
 
 .btn-icon:focus-visible,
