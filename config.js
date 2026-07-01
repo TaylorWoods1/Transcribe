@@ -4,7 +4,7 @@ export const CONFIG = {
   appShortName: 'Tiger',
   version: '1.0.1',
   /** Bumped on every deploy by scripts/stamp-deploy-version.mjs */
-  deployId: 'ea97b90',
+  deployId: '21586fc',
 
   /** Default timezone offset label (GMT+10) */
   defaultTimezone: 'Australia/Sydney',

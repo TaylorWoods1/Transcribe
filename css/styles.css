@@ -81,11 +81,10 @@ body {
   top: 0;
   z-index: 100;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
-  height: var(--header-h);
-  padding: 0 12px;
-  padding-top: env(safe-area-inset-top);
+  min-height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) 0 max(12px, env(safe-area-inset-left, 0px));
   background: var(--primary);
   color: #fff;
   box-shadow: var(--shadow);
@@ -94,6 +93,8 @@ body {
 .app-header h1 {
   flex: 1;
   margin: 0;
+  height: var(--header-h);
+  line-height: var(--header-h);
   font-size: 1.1rem;
   font-weight: 600;
   white-space: nowrap;
@@ -101,7 +102,17 @@ body {
   text-overflow: ellipsis;
 }
 
-.header-actions { display: flex; gap: 4px; }
+.header-actions {
+  display: flex;
+  gap: 4px;
+  height: var(--header-h);
+  align-items: center;
+}
+
+.app-header .btn-icon {
+  width: var(--header-h);
+  height: var(--header-h);
+}
 
 /* Buttons */
 .btn, .btn-icon {
