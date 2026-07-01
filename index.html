@@ -37,8 +37,8 @@
     </section>
 
     <!-- Session -->
-    <section id="view-session" class="view" aria-label="Session">
-      <div class="session-header">
+    <section id="view-session" class="view" aria-label="Session" aria-hidden="true">
+      <div class="session-header card">
         <input type="text" id="session-title-input" class="session-title" aria-label="Encounter title" value="New encounter">
         <input type="search" id="session-search" placeholder="Search transcript…" aria-label="Search in transcript">
         <div class="export-bar" role="group" aria-label="Export">
@@ -53,25 +53,25 @@
 
       <nav class="tabs" role="tablist" aria-label="Session tabs">
         <button class="tab-btn active" type="button" data-tab="record" role="tab" aria-selected="true">Record</button>
-        <button class="tab-btn" type="button" data-tab="transcript" role="tab">Transcript</button>
-        <button class="tab-btn" type="button" data-tab="notes" role="tab">Notes</button>
-        <button class="tab-btn" type="button" data-tab="actions" role="tab">Actions</button>
-        <button class="tab-btn" type="button" data-tab="insights" role="tab">Insights</button>
-        <button class="tab-btn" type="button" data-tab="assist" role="tab">Assist</button>
+        <button class="tab-btn" type="button" data-tab="transcript" role="tab" aria-selected="false" tabindex="-1">Transcript</button>
+        <button class="tab-btn" type="button" data-tab="notes" role="tab" aria-selected="false" tabindex="-1">Notes</button>
+        <button class="tab-btn" type="button" data-tab="actions" role="tab" aria-selected="false" tabindex="-1">Actions</button>
+        <button class="tab-btn" type="button" data-tab="insights" role="tab" aria-selected="false" tabindex="-1">Insights</button>
+        <button class="tab-btn" type="button" data-tab="assist" role="tab" aria-selected="false" tabindex="-1">Assist</button>
       </nav>
 
-      <div class="tab-panels">
-        <div id="panel-record" class="tab-panel active" role="tabpanel"></div>
-        <div id="panel-transcript" class="tab-panel" role="tabpanel"></div>
-        <div id="panel-notes" class="tab-panel" role="tabpanel"></div>
-        <div id="panel-actions" class="tab-panel" role="tabpanel"></div>
-        <div id="panel-insights" class="tab-panel" role="tabpanel"></div>
-        <div id="panel-assist" class="tab-panel" role="tabpanel"></div>
+      <div class="tab-panels card card-flush">
+        <div id="panel-record" class="tab-panel active" role="tabpanel" aria-hidden="false"></div>
+        <div id="panel-transcript" class="tab-panel" role="tabpanel" aria-hidden="true"></div>
+        <div id="panel-notes" class="tab-panel" role="tabpanel" aria-hidden="true"></div>
+        <div id="panel-actions" class="tab-panel" role="tabpanel" aria-hidden="true"></div>
+        <div id="panel-insights" class="tab-panel" role="tabpanel" aria-hidden="true"></div>
+        <div id="panel-assist" class="tab-panel" role="tabpanel" aria-hidden="true"></div>
       </div>
     </section>
 
     <!-- Settings -->
-    <section id="view-settings" class="view" aria-label="Settings"></section>
+    <section id="view-settings" class="view" aria-label="Settings" aria-hidden="true"></section>
   </main>
 
   <div id="toast-container" class="toast-container" aria-live="polite"></div>

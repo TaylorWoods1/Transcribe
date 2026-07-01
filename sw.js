@@ -1,4 +1,4 @@
-const CACHE = 'lucy-scribe-v2';
+const CACHE = 'lucy-scribe-v3';
 const SHELL = [
   './',
   './index.html',
