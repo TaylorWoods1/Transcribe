@@ -1,9 +1,14 @@
 /**
  * Insights: entities, questions, red-flag detection, extractive summary.
  */
-import { CONFIG } from '../config.js';
-import { buildTranscriptText } from './notes.js';
+import { buildTranscriptText, detectRedFlags, getDisclaimer } from './lib/clinical.js';
 
+export { getDisclaimer };
+
+/**
+ * @param {{ segments?: Array, speakers?: Array }} encounter
+ * @returns {{ summary: string, entities: Array, questions: Array, considerations: Array }}
+ */
 export function analyzeEncounter(encounter) {
   const text = buildTranscriptText(encounter.segments, encounter.speakers);
   return {
@@ -15,7 +20,10 @@ export function analyzeEncounter(encounter) {
 }
 
 function extractiveSummary(text) {
-  const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 20);
+  const sentences = text
+    .split(/[.!?]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 20);
   if (!sentences.length) return 'No transcript content yet.';
   return sentences.slice(0, 4).join('. ') + (sentences.length > 4 ? '.' : '');
 }
@@ -23,9 +31,19 @@ function extractiveSummary(text) {
 function extractEntities(text) {
   const entities = [];
   const patterns = [
-    { type: 'medication', regex: /\b(?:mg|mcg|ml|tablet|capsule|inhaler|insulin|paracetamol|ibuprofen|aspirin|metformin|amoxicillin)\b[^.!?]{0,40}/gi },
-    { type: 'condition', regex: /\b(?:diabetes|hypertension|asthma|depression|anxiety|copd|arthritis|migraine|infection|fracture)\b/gi },
-    { type: 'procedure', regex: /\b(?:x-ray|xray|mri|ct scan|ultrasound|blood test|ecg|ekg|biopsy)\b/gi },
+    {
+      type: 'medication',
+      regex:
+        /\b(?:mg|mcg|ml|tablet|capsule|inhaler|insulin|paracetamol|ibuprofen|aspirin|metformin|amoxicillin)\b[^.!?]{0,40}/gi,
+    },
+    {
+      type: 'condition',
+      regex: /\b(?:diabetes|hypertension|asthma|depression|anxiety|copd|arthritis|migraine|infection|fracture)\b/gi,
+    },
+    {
+      type: 'procedure',
+      regex: /\b(?:x-ray|xray|mri|ct scan|ultrasound|blood test|ecg|ekg|biopsy)\b/gi,
+    },
   ];
   for (const { type, regex } of patterns) {
     regex.lastIndex = 0;
@@ -53,23 +71,4 @@ function extractQuestions(segments) {
     }
   }
   return questions.slice(0, 10);
-}
-
-function detectRedFlags(text) {
-  const lower = text.toLowerCase();
-  const flags = [];
-  for (const keyword of CONFIG.redFlagKeywords) {
-    if (lower.includes(keyword)) {
-      flags.push({
-        keyword,
-        severity: 'high',
-        message: `Red-flag term detected: "${keyword}". Consider urgent clinical review.`,
-      });
-    }
-  }
-  return flags;
-}
-
-export function getDisclaimer() {
-  return CONFIG.disclaimer;
 }

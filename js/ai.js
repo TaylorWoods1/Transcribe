@@ -1,26 +1,34 @@
 /**
  * AI summarization (optional OpenAI-compatible API) + extractive fallback.
  */
-import { generateNotesFromSegments, buildTranscriptText } from './notes.js';
+import { generateNotesFromSegments } from './notes.js';
+import { buildTranscriptText } from './lib/clinical.js';
 import { createId } from './db.js';
+import {
+  STORAGE_KEYS,
+  readJsonStorage,
+  writeJsonStorage,
+} from './lib/storage-keys.js';
+import {
+  chatCompletion,
+  isAiConfigured,
+  parseJsonMessageContent,
+} from './lib/ai-client.js';
 
-const SETTINGS_KEY = 'lucy-ai-settings';
-
+/**
+ * @returns {import('./lib/ai-client.js').AiSettings}
+ */
 export function getAiSettings() {
-  try {
-    return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-  } catch {
-    return {};
-  }
+  return readJsonStorage(STORAGE_KEYS.AI_SETTINGS);
 }
 
+/** @param {import('./lib/ai-client.js').AiSettings} settings */
 export function saveAiSettings(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  writeJsonStorage(STORAGE_KEYS.AI_SETTINGS, settings);
 }
 
 export function hasAiConfigured() {
-  const s = getAiSettings();
-  return !!(s.apiKey && s.baseUrl);
+  return isAiConfigured(getAiSettings());
 }
 
 export async function generateSoapNote(encounter) {
@@ -58,64 +66,42 @@ async function callAi(encounter, mode) {
     patient: `Write a patient-friendly summary (plain language, no jargon). Return JSON: {"summary":"","sourceSegmentIds":[]}\n\n${transcript}`,
   };
 
-  const url = `${settings.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: settings.model || 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompts[mode] || prompts.concise },
-      ],
-      temperature: 0.3,
-      response_format: { type: 'json_object' },
-    }),
+  const data = await chatCompletion(settings, {
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: prompts[mode] || prompts.concise },
+    ],
+    temperature: 0.3,
+    response_format: { type: 'json_object' },
   });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`AI request failed (${res.status}): ${err.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content || '{}';
-  try {
-    return JSON.parse(content);
-  } catch {
-    return { summary: content, sourceSegmentIds: [] };
-  }
+  return parseJsonMessageContent(data);
 }
 
 export async function extractActionsWithAi(encounter, ruleBasedActions) {
   if (!hasAiConfigured()) return ruleBasedActions;
   const settings = getAiSettings();
   const transcript = buildTranscriptText(encounter.segments, encounter.speakers);
-  const url = `${settings.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: settings.model || 'gpt-4o-mini',
+
+  const data = await chatCompletion(
+    settings,
+    {
       messages: [
         {
           role: 'system',
-          content: 'Extract action items from clinical transcripts. Return JSON: {"actions":[{"text":"","sourceSegmentId":""}]}',
+          content:
+            'Extract action items from clinical transcripts. Return JSON: {"actions":[{"text":"","sourceSegmentId":""}]}',
         },
         { role: 'user', content: transcript },
       ],
       temperature: 0.2,
       response_format: { type: 'json_object' },
-    }),
-  });
-  if (!res.ok) return ruleBasedActions;
-  const data = await res.json();
+    },
+    { throwOnError: false }
+  );
+
+  if (!data) return ruleBasedActions;
+
   try {
     const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}');
     const aiActions = (parsed.actions || []).map((a) => ({
@@ -143,18 +129,12 @@ export async function extractActionsWithAi(encounter, ruleBasedActions) {
 export async function generateLiveAssistWithAi({ segments, speakers }) {
   if (!hasAiConfigured()) return null;
   const settings = getAiSettings();
-  const transcript = buildTranscriptText(segments, speakers);
+  const transcript = buildTranscriptText(segments, speakers, { finalsOnly: true });
   if (!transcript.trim()) return null;
 
-  const url = `${settings.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: settings.model || 'gpt-4o-mini',
+  const data = await chatCompletion(
+    settings,
+    {
       messages: [
         {
           role: 'system',
@@ -172,11 +152,12 @@ ${transcript}`,
       ],
       temperature: 0.35,
       response_format: { type: 'json_object' },
-    }),
-  });
+    },
+    { throwOnError: false }
+  );
 
-  if (!res.ok) return null;
-  const data = await res.json();
+  if (!data) return null;
+
   try {
     const parsed = JSON.parse(data.choices?.[0]?.message?.content || '{}');
     return {

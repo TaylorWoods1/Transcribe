@@ -2,7 +2,8 @@
  * Real-time clinical assist: rule-based suggestions during live capture.
  * AI layer is optional (see ai.js).
  */
-import { CONFIG } from '../config.js';
+import { buildTranscriptText, detectRedFlags } from './lib/clinical.js';
+import { normalizeText as normalize } from './lib/utils.js';
 
 const QUESTION_RULES = [
   {
@@ -189,18 +190,6 @@ const GENERIC_RESPONSES = [
   { text: 'I will explain my thinking and the plan, then we can discuss any questions.', type: 'plan' },
 ];
 
-function buildTranscriptText(segments, speakers) {
-  const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s.name]));
-  return (segments || [])
-    .filter((s) => s.isFinal !== false && s.text?.trim())
-    .map((s) => `${speakerMap[s.speakerId] || 'Speaker'}: ${s.text}`)
-    .join('\n');
-}
-
-function normalize(text) {
-  return (text || '').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function alreadyAsked(question, segments) {
   const q = normalize(question).replace(/\?/g, '');
   for (const seg of segments || []) {
@@ -215,23 +204,8 @@ function matchTriggers(text, triggers) {
   return triggers.some((t) => lower.includes(t));
 }
 
-function detectRedFlags(text) {
-  const lower = text.toLowerCase();
-  const flags = [];
-  for (const keyword of CONFIG.redFlagKeywords) {
-    if (lower.includes(keyword)) {
-      flags.push({
-        keyword,
-        severity: 'high',
-        message: `Red-flag term detected: "${keyword}". Consider urgent clinical review.`,
-      });
-    }
-  }
-  return flags;
-}
-
 export function analyzeLiveAssist(segments, speakers) {
-  const text = buildTranscriptText(segments, speakers);
+  const text = buildTranscriptText(segments, speakers, { finalsOnly: true });
   const lower = text.toLowerCase();
   const questions = [];
   const responses = [];

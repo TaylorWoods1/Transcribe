@@ -28,12 +28,18 @@ import {
   isWhisperCached,
 } from './transcribe-whisper.js';
 import { DiarizationTracker } from './diarize.js';
-import { generateNotesFromSegments } from './notes.js';
-import { extractActions, toggleAction, updateActionText, deleteAction, addAction } from './actions.js';
+import { extractActions, toggleAction, deleteAction, addAction } from './actions.js';
 import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
+import {
+  STORAGE_KEYS,
+  migrateStorageKeys,
+  readJsonStorage,
+  writeJsonStorage,
+} from './lib/storage-keys.js';
+import { nextSpeaker, sanitizeColor } from './lib/utils.js';
 import { exportEncounter } from './export.js';
 import {
   initUi,
@@ -49,7 +55,6 @@ import {
   bindActionEvents,
   renderInsights,
   renderLiveAssist,
-  renderLiveTranscriptFeed,
   updateLiveTranscriptFeed,
   renderLiveAssistSuggestions,
   loadTheme,
@@ -57,7 +62,7 @@ import {
   escapeHtml,
 } from './ui.js';
 
-const APP_SETTINGS_KEY = 'lucy-app-settings';
+const APP_SETTINGS_KEY = STORAGE_KEYS.APP_SETTINGS;
 
 /** @type {object|null} */
 let currentEncounter = null;
@@ -170,7 +175,7 @@ function handleBack() {
 
 function getAppSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(APP_SETTINGS_KEY) || '{}');
+    const saved = readJsonStorage(APP_SETTINGS_KEY);
     const defaults = getDefaultAppSettings();
     return {
       ...defaults,
@@ -195,7 +200,7 @@ function getDefaultAppSettings() {
 }
 
 function saveAppSettings(settings) {
-  localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(settings));
+  writeJsonStorage(APP_SETTINGS_KEY, settings);
 }
 
 async function refreshHome(query = '') {
@@ -986,7 +991,7 @@ function renderSettings() {
     const speakers = settings.speakers.map((s, i) => ({
       id: s.id,
       name: fd.get(`speaker-name-${i}`) || s.name,
-      color: fd.get(`speaker-color-${i}`) || s.color,
+      color: sanitizeColor(fd.get(`speaker-color-${i}`) || s.color, s.color),
     }));
     const appSettings = {
       timezone: fd.get('timezone'),
@@ -1004,7 +1009,7 @@ function renderSettings() {
       model: fd.get('model'),
     });
     document.documentElement.dataset.theme = fd.get('darkMode') === 'on' ? 'dark' : 'light';
-    localStorage.setItem('lucy-theme', document.documentElement.dataset.theme);
+    localStorage.setItem(STORAGE_KEYS.THEME, document.documentElement.dataset.theme);
     showToast('Settings saved', 'success');
   });
 
@@ -1075,8 +1080,8 @@ function setupKeyboardShortcuts() {
     }
     if (e.key === 's' || e.key === 'S') {
       if (!diarizer || !currentEncounter?.speakers?.length) return;
-      const idx = currentEncounter.speakers.findIndex((s) => s.id === diarizer.activeSpeakerId);
-      const next = currentEncounter.speakers[(idx + 1) % currentEncounter.speakers.length];
+      const next = nextSpeaker(currentEncounter.speakers, diarizer.activeSpeakerId);
+      if (!next) return;
       diarizer.setActiveSpeaker(next.id, { manual: true });
       renderRecordPanel();
       scheduleLiveUIUpdate();
@@ -1090,8 +1095,8 @@ function registerServiceWorker() {
   navigator.serviceWorker
     .register('./sw.js')
     .then(() => {
-      if (!window.crossOriginIsolated && !sessionStorage.getItem('tiger-coi-reload')) {
-        sessionStorage.setItem('tiger-coi-reload', '1');
+      if (!window.crossOriginIsolated && !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)) {
+        sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
         window.location.reload();
       }
     })
@@ -1099,6 +1104,7 @@ function registerServiceWorker() {
 }
 
 async function init() {
+  migrateStorageKeys();
   loadTheme();
   initUi();
   navigate('home');

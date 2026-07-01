@@ -2,6 +2,7 @@
  * Runtime capability detection for on-device inference on iOS / browsers.
  */
 import { CONFIG } from '../config.js';
+import { escapeHtml } from './lib/utils.js';
 
 export function getRuntimeCapabilities() {
   const ua = navigator.userAgent || '';
@@ -23,7 +24,7 @@ export function getRuntimeCapabilities() {
   if (hasWebGPU && !isIOS) inferenceBackend = 'webgpu-or-wasm';
   if (hasWebGPU && isIOS) inferenceBackend = 'wasm-preferred'; // research: WASM often faster for Whisper on Apple mobile
 
-  const tier = estimateDeviceTier({ isIOS, cores, memoryGb, canMultiThreadWasm, hasWebGPU });
+  const tier = estimateDeviceTier({ cores, memoryGb, canMultiThreadWasm, hasWebGPU });
 
   return {
     isIOS,
@@ -46,7 +47,7 @@ export function getRuntimeCapabilities() {
   };
 }
 
-function estimateDeviceTier({ isIOS, cores, memoryGb, canMultiThreadWasm, hasWebGPU }) {
+function estimateDeviceTier({ cores, memoryGb, canMultiThreadWasm, hasWebGPU }) {
   const c = cores || 2;
   const m = memoryGb || 4;
   if (c >= 6 && m >= 6 && (canMultiThreadWasm || hasWebGPU)) return 'high';
@@ -105,7 +106,7 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
   ];
 
   const notes = (caps.notes || [])
-    .map((n) => `<li class="copy-contained">${escape(n)}</li>`)
+    .map((n) => `<li class="copy-contained">${escapeHtml(n)}</li>`)
     .join('');
 
   return `
@@ -116,17 +117,10 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
         ${rows
           .map(
             ([dt, dd]) =>
-              `<div><dt>${escape(dt)}</dt><dd>${escape(String(dd))}</dd></div>`
+              `<div><dt>${escapeHtml(dt)}</dt><dd>${escapeHtml(String(dd))}</dd></div>`
           )
           .join('')}
       </dl>
       ${notes ? `<ul class="runtime-notes">${notes}</ul>` : ''}
     </div>`;
-}
-
-function escape(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
