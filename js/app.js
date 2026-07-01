@@ -33,6 +33,7 @@ import { extractActions, toggleAction, updateActionText, deleteAction, addAction
 import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
+import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
 import { exportEncounter } from './export.js';
 import {
   initUi,
@@ -940,8 +941,9 @@ function renderSettings() {
           <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
           Auto-transcribe after recording
         </label>
-        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Download the model first — it preloads when you open a session.</p>
+        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Uses multi-thread WASM when cross-origin isolation is active.</p>
       </fieldset>
+      ${renderRuntimeCapabilitiesHtml(getRuntimeCapabilities())}
       <fieldset>
         <legend>Speakers</legend>
         <div id="speakers-editor">
@@ -1084,9 +1086,16 @@ function setupKeyboardShortcuts() {
 }
 
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .register('./sw.js')
+    .then(() => {
+      if (!window.crossOriginIsolated && !sessionStorage.getItem('tiger-coi-reload')) {
+        sessionStorage.setItem('tiger-coi-reload', '1');
+        window.location.reload();
+      }
+    })
+    .catch(() => {});
 }
 
 async function init() {

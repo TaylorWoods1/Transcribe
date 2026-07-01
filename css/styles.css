@@ -908,6 +908,52 @@ body {
 }
 
 /* Whisper model status (Settings) */
+.runtime-caps {
+  margin: 12px 0;
+  padding: 12px;
+}
+
+.runtime-caps h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.runtime-caps-grid {
+  display: grid;
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.runtime-caps-grid div {
+  display: grid;
+  grid-template-columns: minmax(0, 42%) 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.runtime-caps-grid dt {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.runtime-caps-grid dd {
+  margin: 0;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.runtime-notes {
+  margin: 12px 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.runtime-notes li {
+  margin-bottom: 6px;
+}
+
 .whisper-status {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);

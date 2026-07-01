@@ -3,6 +3,7 @@
  * Includes explicit download + status tracking for Settings UI.
  */
 import { CONFIG } from '../config.js';
+import { getRuntimeCapabilities, probeWebGPU } from './runtime.js';
 
 const STATUS_KEY = 'tiger-whisper-status';
 const MODEL_LABEL = 'Whisper Tiny (English)';
@@ -132,15 +133,23 @@ function configureTransformersEnv(env) {
   if (envConfigured) return;
   env.allowLocalModels = false;
   env.useBrowserCache = true;
+  const caps = getRuntimeCapabilities();
   const wasm = env.backends?.onnx?.wasm;
   if (wasm) {
-    const threads = CONFIG.whisperWasmThreads || 4;
-    const cores =
-      typeof navigator.hardwareConcurrency === 'number' ? navigator.hardwareConcurrency : threads;
-    wasm.numThreads = Math.min(threads, Math.max(1, cores));
+    wasm.numThreads = caps.wasmThreads;
     if ('simd' in wasm) wasm.simd = true;
   }
   envConfigured = true;
+}
+
+async function pickInferenceDevice() {
+  const caps = getRuntimeCapabilities();
+  // Research (transformers.js #894, SitePoint benchmarks): Whisper on Apple Silicon
+  // often runs faster on multi-thread WASM than WebGPU in browser runtimes.
+  if (caps.isIOS) return 'wasm';
+  if (!caps.hasWebGPU) return 'wasm';
+  const probe = await probeWebGPU();
+  return probe.available ? 'webgpu' : 'wasm';
 }
 
 async function createPipeline(onProgress) {
@@ -153,14 +162,24 @@ async function createPipeline(onProgress) {
     notifyStatusListeners();
   };
 
-  const baseOpts = { progress_callback };
+  const device = await pickInferenceDevice();
+  const baseOpts = {
+    progress_callback,
+    dtype: CONFIG.whisperDtype,
+    device,
+  };
+
   try {
-    return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
-      ...baseOpts,
-      device: 'webgpu',
-    });
-  } catch {
-    return pipeline('automatic-speech-recognition', CONFIG.whisperModel, baseOpts);
+    return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, baseOpts);
+  } catch (err) {
+    if (device === 'webgpu') {
+      return pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
+        progress_callback,
+        dtype: CONFIG.whisperDtype,
+        device: 'wasm',
+      });
+    }
+    throw err;
   }
 }
 
