@@ -125,16 +125,17 @@ icons/icon.svg
 
 ## Deployment
 
-Pushes to `main` automatically deploy to GitHub Pages via `peaceiris/actions-gh-pages@v4` (publishes the `gh-pages` branch).
+Pushes to `main` deploy via GitHub Actions (`actions/deploy-pages@v4`).
 
-**One-time GitHub setup:**
+**GitHub Pages setup (required once):**
 
-1. Open your repo → **Settings** → **Pages**
-2. Under **Build and deployment**, set **Source** to **Deploy from a branch**
-3. Choose branch **`gh-pages`** and folder **`/ (root)`**
-4. Save — the site will be live at `https://taylorwoods1.github.io/Transcribe/` within a minute or two
+1. Open **Settings → Pages**
+2. Under **Build and deployment → Source**, choose **GitHub Actions** (not “Deploy from a branch”)
+3. The next push to `main` publishes the site automatically
 
-Or use **GitHub Actions** as the Pages source if your repo offers that option (either works after the first deploy creates `gh-pages`).
+**Live URL:** https://taylorwoods1.github.io/Transcribe/
+
+If you previously chose “Deploy from a branch” and the site stays offline/404, switch the source to **GitHub Actions** — the branch-based builder can hang on first deploy for static PWAs.
 
 ## Disclaimer
 
