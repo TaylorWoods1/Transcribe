@@ -35,6 +35,7 @@ const SHELL = [
   './js/lib/clinical.js',
   './js/lib/storage-keys.js',
   './js/lib/app-settings.js',
+  './js/lib/coi-reload.js',
   './js/lib/ai-client.js',
   './js/lib/types.js',
   './js/export.js',
@@ -82,6 +83,7 @@ async function buildHtmlResponse(request, response) {
     headers.set(key, value);
   }
   headers.set('Content-Security-Policy', CSP);
+  headers.set('Cache-Control', 'no-cache');
   return new Response(text, {
     status: response.status,
     statusText: response.statusText,
@@ -89,24 +91,11 @@ async function buildHtmlResponse(request, response) {
   });
 }
 
-async function withCoiHeaders(request, response) {
-  const body = await response.blob();
-  const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(getCoiHeaders(request))) {
-    headers.set(key, value);
-  }
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-}
-
 async function finalizeResponse(request, response) {
-  if (!isHtmlResponse(response) && request.mode !== 'navigate') {
-    return withCoiHeaders(request, response);
+  if (isHtmlResponse(response) || request.mode === 'navigate') {
+    return buildHtmlResponse(request, response);
   }
-  return buildHtmlResponse(request, response);
+  return response;
 }
 
 async function cacheResponse(request, response) {
@@ -133,15 +122,15 @@ async function respondFromNetworkFirst(request) {
 async function respondCacheFirst(request) {
   const cached = await caches.match(request);
   if (cached) {
-    return withCoiHeaders(request, cached);
+    return isHtmlResponse(cached) || request.mode === 'navigate'
+      ? finalizeResponse(request, cached)
+      : cached;
   }
 
   const response = await fetch(request);
   if (!response?.ok) return response;
 
-  const final = isHtmlResponse(response)
-    ? await finalizeResponse(request, response)
-    : await withCoiHeaders(request, response);
+  const final = await finalizeResponse(request, response);
   await cacheResponse(request, final);
   return final;
 }

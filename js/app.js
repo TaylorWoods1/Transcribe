@@ -32,6 +32,12 @@ import { extractActions, toggleAction, deleteAction, addAction } from './actions
 import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
+import {
+  clearCoiReloadAttempts,
+  recordCoiReloadAttempt,
+  reloadForCrossOriginIsolation,
+  shouldAutoReloadForCoi,
+} from './lib/coi-reload.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml, getLiveCaptureTiming } from './runtime.js';
 import { enforcePwaInstall } from './install-prompt.js';
 import {
@@ -1041,9 +1047,14 @@ function renderSettings() {
 
   whisperStatusUnsubscribe = subscribeWhisperStatus(() => updateWhisperStatusPanel());
 
-  el.querySelector('#btn-coi-reload')?.addEventListener('click', () => {
-    sessionStorage.removeItem(STORAGE_KEYS.COI_RELOAD);
-    window.location.reload();
+  el.querySelector('#btn-coi-reload')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#btn-coi-reload');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Reloading…';
+    }
+    showToast('Clearing cache and reloading for multi-thread WASM…', 'info', 3500);
+    await reloadForCrossOriginIsolation({ clearCaches: true, cacheBust: true, resetAttempts: true });
   });
 }
 
@@ -1143,15 +1154,20 @@ async function ensureCrossOriginIsolation() {
   if (!('serviceWorker' in navigator)) return true;
 
   if (window.crossOriginIsolated) {
-    sessionStorage.removeItem(STORAGE_KEYS.COI_RELOAD);
+    clearCoiReloadAttempts();
     return true;
   }
 
-  const attempts = parseInt(sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD) || '0', 10);
-  if (attempts >= 3) return true;
+  if (!navigator.serviceWorker.controller) {
+    return true;
+  }
 
-  sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, String(attempts + 1));
-  window.location.reload();
+  if (!shouldAutoReloadForCoi()) {
+    return true;
+  }
+
+  recordCoiReloadAttempt();
+  await reloadForCrossOriginIsolation({ clearCaches: true, cacheBust: true });
   return false;
 }
 

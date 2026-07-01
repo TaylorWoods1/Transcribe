@@ -3,6 +3,7 @@ import {
   isWebKitSafari,
   getExpectedCoepMode,
   getLiveCaptureTiming,
+  getCoiBlockerReason,
 } from '../js/runtime.js';
 
 describe('runtime', () => {
@@ -63,5 +64,14 @@ describe('runtime', () => {
       notes: [],
     });
     expect(multi.whisperChunkLengthS).toBeGreaterThan(single.whisperChunkLengthS);
+  });
+
+  it('explains when service worker is not controlling', () => {
+    const reason = getCoiBlockerReason({
+      crossOriginIsolated: false,
+      isStandalone: true,
+      isIOS: true,
+    });
+    expect(reason).toMatch(/service worker/i);
   });
 });
