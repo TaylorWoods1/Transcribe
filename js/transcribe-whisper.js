@@ -3,7 +3,11 @@
  * Includes explicit download + status tracking for Settings UI.
  */
 import { CONFIG } from '../config.js';
-import { getRuntimeCapabilities, probeWebGPU, getLiveCaptureTiming } from './runtime.js';
+import {
+  getRuntimeCapabilities,
+  probeWebGPU,
+  getLiveCaptureTiming,
+} from './runtime.js';
 import {
   STORAGE_KEYS,
 } from './lib/storage-keys.js';
@@ -19,7 +23,6 @@ let loadProgress = null;
 let isTranscribing = false;
 let liveTranscribeCount = 0;
 const statusListeners = new Set();
-let envConfigured = false;
 
 function readStoredStatus() {
   try {
@@ -133,17 +136,41 @@ export function formatWhisperDownloadedAt(ts) {
   return new Date(ts).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function configureTransformersEnv(env) {
-  if (envConfigured) return;
+/**
+ * Safari blocks cross-origin module workers under COEP — fetch+blob avoids CDN import failures.
+ * @see https://github.com/huggingface/transformers.js/issues/319
+ */
+export async function loadTransformersModule(cdnUrl = CONFIG.whisperCdn) {
+  const useBlobImport =
+    typeof window !== 'undefined' &&
+    window.crossOriginIsolated === true;
+
+  if (!useBlobImport) {
+    return import(cdnUrl);
+  }
+
+  const response = await fetch(cdnUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch transformers.js (${response.status})`);
+  }
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    return await import(blobUrl);
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
+
+function configureTransformersEnv(env, { numThreads } = {}) {
+  const caps = getRuntimeCapabilities();
   env.allowLocalModels = false;
   env.useBrowserCache = true;
-  const caps = getRuntimeCapabilities();
   const wasm = env.backends?.onnx?.wasm;
   if (wasm) {
-    wasm.numThreads = caps.wasmThreads;
+    wasm.numThreads = numThreads ?? caps.onnxWasmThreads;
     if ('simd' in wasm) wasm.simd = true;
   }
-  envConfigured = true;
 }
 
 async function pickInferenceDevice() {
@@ -156,35 +183,53 @@ async function pickInferenceDevice() {
   return probe.available ? 'webgpu' : 'wasm';
 }
 
-async function createPipeline(onProgress) {
-  const { pipeline, env } = await import(CONFIG.whisperCdn);
-  configureTransformersEnv(env);
+function getOnnxThreadAttempts() {
+  const caps = getRuntimeCapabilities();
+  const preferred = caps.onnxWasmThreads;
+  const attempts = [preferred];
+  if (preferred > 1) attempts.push(1);
+  return attempts;
+}
 
+async function createPipeline(onProgress) {
+  const { pipeline, env } = await loadTransformersModule();
+  const device = await pickInferenceDevice();
   const progress_callback = (p) => {
     loadProgress = p;
     onProgress?.(p);
     notifyStatusListeners();
   };
-
-  const device = await pickInferenceDevice();
   const baseOpts = {
     progress_callback,
     dtype: CONFIG.whisperDtype,
     device,
   };
 
-  try {
-    return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, baseOpts);
-  } catch (err) {
-    if (device === 'webgpu') {
-      return pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
+  let lastError;
+  for (const numThreads of getOnnxThreadAttempts()) {
+    configureTransformersEnv(env, { numThreads });
+    try {
+      return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, baseOpts);
+    } catch (err) {
+      lastError = err;
+      if (numThreads === 1) break;
+    }
+  }
+
+  if (device === 'webgpu') {
+    try {
+      configureTransformersEnv(env, { numThreads: 1 });
+      return await pipeline('automatic-speech-recognition', CONFIG.whisperModel, {
         progress_callback,
         dtype: CONFIG.whisperDtype,
         device: 'wasm',
       });
+    } catch (err) {
+      lastError = err;
     }
-    throw err;
   }
+
+  throw lastError;
 }
 
 export async function loadWhisperPipeline(onProgress) {
