@@ -1,4 +1,4 @@
-const CACHE = 'tiger-scribe-v11';
+const CACHE = 'tiger-scribe-v12';
 const SHELL = [
   './',
   './index.html',
@@ -23,6 +23,7 @@ const SHELL = [
   './js/lib/clinical.js',
   './js/lib/storage-keys.js',
   './js/lib/ai-client.js',
+  './js/lib/types.js',
   './js/export.js',
   './js/ui.js',
   './icons/icon.svg',

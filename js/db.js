@@ -1,16 +1,30 @@
 /**
  * IndexedDB wrapper for encounters.
+ * Uses `tiger-scribe`; migrates data once from legacy `lucy-scribe`.
  */
-const DB_NAME = 'lucy-scribe';
+import { STORAGE_KEYS, readJsonStorage, writeJsonStorage } from './lib/storage-keys.js';
+
+/** @typedef {import('./lib/types.js').Encounter} Encounter */
+
+const DB_NAME = 'tiger-scribe';
+const LEGACY_DB_NAME = 'lucy-scribe';
 const DB_VERSION = 1;
 const STORE = 'encounters';
 
 let dbPromise = null;
+let migrationPromise = null;
 
-function openDb() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+function requestToPromise(tx, request, result) {
+  return new Promise((resolve, reject) => {
+    tx.onerror = () => reject(tx.error);
+    request.onsuccess = () => resolve(result !== undefined ? result : request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function openDatabase(name) {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(name, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
@@ -22,22 +36,121 @@ function openDb() {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
-  return dbPromise;
 }
 
-function requestToPromise(tx, request, result) {
-  return new Promise((resolve, reject) => {
-    tx.onerror = () => reject(tx.error);
-    request.onsuccess = () => resolve(result !== undefined ? result : request.result);
-    request.onerror = () => reject(request.error);
+async function dbExists(name) {
+  if (typeof indexedDB.databases === 'function') {
+    const dbs = await indexedDB.databases();
+    return dbs.some((db) => db.name === name);
+  }
+  return new Promise((resolve) => {
+    const req = indexedDB.open(name);
+    req.onupgradeneeded = () => {
+      req.transaction?.abort();
+      resolve(false);
+    };
+    req.onsuccess = () => {
+      req.result.close();
+      resolve(true);
+    };
+    req.onerror = () => resolve(false);
   });
 }
 
+async function readAllFromDb(name) {
+  if (!(await dbExists(name))) return [];
+  const db = await openDatabase(name);
+  if (!db.objectStoreNames.contains(STORE)) {
+    db.close();
+    return [];
+  }
+  const tx = db.transaction(STORE, 'readonly');
+  const req = tx.objectStore(STORE).getAll();
+  const items = await requestToPromise(tx, req);
+  db.close();
+  return items || [];
+}
+
+async function migrateLegacyDatabase() {
+  const flags = readJsonStorage(STORAGE_KEYS.DB_FLAGS);
+  if (flags.legacyMigrated) return;
+
+  const legacyExists = await dbExists(LEGACY_DB_NAME);
+  if (!legacyExists) {
+    writeJsonStorage(STORAGE_KEYS.DB_FLAGS, { ...flags, legacyMigrated: true });
+    return;
+  }
+
+  const legacyItems = await readAllFromDb(LEGACY_DB_NAME);
+  if (!legacyItems.length) {
+    writeJsonStorage(STORAGE_KEYS.DB_FLAGS, { ...flags, legacyMigrated: true });
+    return;
+  }
+
+  const tigerDb = await openDatabase(DB_NAME);
+  const existing = await (async () => {
+    const tx = tigerDb.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    return requestToPromise(tx, req);
+  })();
+
+  if (!existing?.length) {
+    const tx = tigerDb.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    for (const item of legacyItems) {
+      store.put(item);
+    }
+    await requestToPromise(tx, store.getAll());
+  }
+
+  tigerDb.close();
+  writeJsonStorage(STORAGE_KEYS.DB_FLAGS, { ...flags, legacyMigrated: true, migratedCount: legacyItems.length });
+}
+
+export async function ensureDbMigrated() {
+  if (!migrationPromise) {
+    migrationPromise = migrateLegacyDatabase().catch((err) => {
+      migrationPromise = null;
+      throw err;
+    });
+  }
+  return migrationPromise;
+}
+
+/** Reset module state — for tests only. */
+export async function __resetDbForTests() {
+  if (dbPromise) {
+    try {
+      (await dbPromise).close();
+    } catch {
+      /* ignore */
+    }
+  }
+  dbPromise = null;
+  migrationPromise = null;
+}
+
+async function openDb() {
+  await ensureDbMigrated();
+  if (!dbPromise) {
+    dbPromise = openDatabase(DB_NAME);
+  }
+  return dbPromise;
+}
+
+/**
+ * @param {string} [prefix]
+ * @returns {string}
+ */
 export function createId(prefix = 'enc') {
   if (crypto.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+/**
+ * @param {Partial<Encounter>} [overrides]
+ * @returns {Encounter}
+ */
 export function createEmptyEncounter(overrides = {}) {
   const now = Date.now();
   const base = {
@@ -63,6 +176,10 @@ export function createEmptyEncounter(overrides = {}) {
   };
 }
 
+/**
+ * @param {Encounter} encounter
+ * @returns {Promise<Encounter>}
+ */
 export async function saveEncounter(encounter) {
   encounter.updatedAt = Date.now();
   const db = await openDb();
@@ -72,6 +189,10 @@ export async function saveEncounter(encounter) {
   return encounter;
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<Encounter|undefined>}
+ */
 export async function getEncounter(id) {
   const db = await openDb();
   const tx = db.transaction(STORE, 'readonly');
@@ -79,6 +200,10 @@ export async function getEncounter(id) {
   return requestToPromise(tx, req);
 }
 
+/**
+ * @param {string} id
+ * @returns {Promise<void>}
+ */
 export async function deleteEncounter(id) {
   const db = await openDb();
   const tx = db.transaction(STORE, 'readwrite');
@@ -86,6 +211,9 @@ export async function deleteEncounter(id) {
   await requestToPromise(tx, req);
 }
 
+/**
+ * @returns {Promise<Encounter[]>}
+ */
 export async function listEncounters() {
   const db = await openDb();
   const tx = db.transaction(STORE, 'readonly');
@@ -94,6 +222,10 @@ export async function listEncounters() {
   return (items || []).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/**
+ * @param {string} query
+ * @returns {Promise<Encounter[]>}
+ */
 export async function searchEncounters(query) {
   const q = query.trim().toLowerCase();
   if (!q) return listEncounters();
@@ -116,9 +248,20 @@ export async function searchEncounters(query) {
   });
 }
 
+/** @returns {Promise<void>} */
 export async function clearAllData() {
   const db = await openDb();
   const tx = db.transaction(STORE, 'readwrite');
   const req = tx.objectStore(STORE).clear();
   await requestToPromise(tx, req);
+}
+
+/** @returns {string} */
+export function getDbName() {
+  return DB_NAME;
+}
+
+/** @returns {string} */
+export function getLegacyDbName() {
+  return LEGACY_DB_NAME;
 }
