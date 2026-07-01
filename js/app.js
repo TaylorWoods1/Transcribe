@@ -13,14 +13,27 @@ import {
 } from './db.js';
 import { AudioRecorder, AudioPlayer } from './audio.js';
 import { LiveTranscriber, isLiveTranscriptionSupported } from './transcribe-live.js';
-import { ChunkedLiveTranscriber } from './transcribe-chunked.js';
+import { ChunkedLiveTranscriber, createLiveStatus } from './transcribe-chunked.js';
 import { VoiceActivityDetector } from './vad.js';
-import { transcribeBlob, transcribeFile, downloadWhisperModel, subscribeWhisperStatus, getWhisperStatus, updateWhisperStatusPanel, renderWhisperStatusHtml, isWhisperReady } from './transcribe-whisper.js';
+import {
+  transcribeBlob,
+  transcribeFile,
+  downloadWhisperModel,
+  subscribeWhisperStatus,
+  getWhisperStatus,
+  updateWhisperStatusPanel,
+  renderWhisperStatusHtml,
+  isWhisperReady,
+  warmWhisperPipeline,
+  isWhisperCached,
+} from './transcribe-whisper.js';
 import { DiarizationTracker } from './diarize.js';
 import { generateNotesFromSegments } from './notes.js';
 import { extractActions, toggleAction, updateActionText, deleteAction, addAction } from './actions.js';
-import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured } from './ai.js';
+import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
 import { analyzeEncounter } from './insights.js';
+import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
+import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
 import { exportEncounter } from './export.js';
 import {
   initUi,
@@ -38,6 +51,7 @@ import {
   renderLiveAssist,
   renderLiveTranscriptFeed,
   updateLiveTranscriptFeed,
+  renderLiveAssistSuggestions,
   loadTheme,
   formatDuration,
   escapeHtml,
@@ -58,12 +72,31 @@ let paused = false;
 let timerInterval = null;
 let activeSegmentId = null;
 let transcriptFilter = '';
-let liveStatusText = '';
+let liveStatus = null;
 let liveUiTimer = null;
+let liveAssistSuggestions = createEmptyAssist();
+let liveAssistAiTimer = null;
+let liveAssistAiLoading = false;
+let liveAssistSegmentFingerprint = '';
 let useChunkedLive = false;
 /** View to return to from settings (home | session) */
 let returnView = 'home';
 let whisperStatusUnsubscribe = null;
+let whisperWarmPromise = null;
+
+function scheduleWhisperWarm() {
+  const settings = getAppSettings();
+  if (!settings.enhancedTranscription) return null;
+  if (!isWhisperCached() && !isWhisperReady()) return null;
+  if (isWhisperReady()) return Promise.resolve();
+  if (whisperWarmPromise) return whisperWarmPromise;
+  whisperWarmPromise = warmWhisperPipeline()
+    .catch(() => {})
+    .finally(() => {
+      whisperWarmPromise = null;
+    });
+  return whisperWarmPromise;
+}
 
 function getActiveView() {
   const active = document.querySelector('.view.active');
@@ -154,6 +187,8 @@ function getDefaultAppSettings() {
     timezone: CONFIG.defaultTimezone,
     language: CONFIG.defaultLanguage,
     enhancedTranscription: false,
+    liveAssistEnabled: true,
+    liveAssistAi: true,
     speakers: [...CONFIG.defaultSpeakers],
     darkMode: null,
   };
@@ -238,8 +273,11 @@ async function showSession(encounter) {
   }
 
   resetSessionTabs();
+  liveAssistSuggestions = createEmptyAssist();
+  liveAssistSegmentFingerprint = '';
   renderSession();
   navigate('session');
+  scheduleWhisperWarm();
   document.getElementById('main')?.scrollIntoView({ behavior: 'instant', block: 'start' });
   window.scrollTo(0, 0);
 }
@@ -305,7 +343,7 @@ function renderRecordPanel() {
         ${recording ? `<button class="btn btn-danger" id="btn-stop" type="button">Stop</button>` : ''}
       </div>
       <p class="live-mode-label">${escapeHtml(getLiveModeLabel())}</p>
-      <div id="live-capture-wrap">${recording ? renderLiveAssist(diarizer?.getLiveSegments() || [], currentEncounter.speakers || []) : ''}</div>
+      <div id="live-capture-wrap">${recording ? renderLiveAssist(diarizer?.getLiveSegments() || [], currentEncounter.speakers || [], { status: liveStatus, activeSpeakerId: diarizer?.activeSpeakerId, partialId: diarizer?._partialId }) : ''}</div>
       <div class="playback-controls" ${currentEncounter.audioBlob && !recording ? '' : 'hidden'}>
         <button class="btn btn-secondary" id="btn-play" type="button">Play</button>
         <button class="btn btn-secondary" id="btn-enhance" type="button">${currentEncounter.settings?.enhancedTranscription ? 'Re-run enhanced transcription' : 'Enhanced transcription'}</button>
@@ -423,13 +461,85 @@ function renderInsightsPanel() {
 
 function renderLiveAssistPanel() {
   const el = document.getElementById('panel-assist');
+  const settings = getAppSettings();
+  const segments =
+    recording && diarizer ? diarizer.getLiveSegments() : currentEncounter?.segments || [];
+
+  if (!settings.liveAssistEnabled) {
+    el.innerHTML = renderLiveAssistSuggestions(null, { enabled: false });
+    return;
+  }
+
+  if (
+    settings.liveAssistEnabled &&
+    (segments?.length || 0) >= CONFIG.liveAssistMinSegments &&
+    !recording
+  ) {
+    liveAssistSuggestions = analyzeLiveAssist(segments, currentEncounter?.speakers || []);
+  }
+
+  el.innerHTML = renderLiveAssistSuggestions(liveAssistSuggestions, {
+    loading: liveAssistAiLoading,
+    enabled: true,
+  });
+}
+
+function getAssistFingerprint(segments) {
+  return (segments || [])
+    .filter((s) => s.isFinal !== false && s.text?.trim())
+    .map((s) => s.id + ':' + s.text.length)
+    .join('|');
+}
+
+function refreshLiveAssist() {
+  const settings = getAppSettings();
+  if (!settings.liveAssistEnabled || !currentEncounter) {
+    liveAssistSuggestions = createEmptyAssist();
+    renderLiveAssistPanel();
+    return;
+  }
+
   const segments =
     recording && diarizer ? diarizer.getLiveSegments() : currentEncounter.segments || [];
-  el.innerHTML = renderLiveTranscriptFeed(segments, currentEncounter.speakers || [], {
-    statusText: recording ? liveStatusText : '',
-    activeSpeakerId: diarizer?.activeSpeakerId,
-    partialId: diarizer?._partialId,
-  });
+  const fingerprint = getAssistFingerprint(segments);
+
+  if (fingerprint !== liveAssistSegmentFingerprint) {
+    liveAssistSegmentFingerprint = fingerprint;
+    liveAssistSuggestions = analyzeLiveAssist(segments, currentEncounter.speakers || []);
+    renderLiveAssistPanel();
+    scheduleLiveAssistAi(segments);
+  }
+}
+
+function scheduleLiveAssistAi(segments) {
+  const settings = getAppSettings();
+  if (!settings.liveAssistEnabled || !settings.liveAssistAi || !hasAiConfigured()) return;
+  if ((segments || []).filter((s) => s.text?.trim()).length < CONFIG.liveAssistMinSegments) return;
+
+  if (liveAssistAiTimer) clearTimeout(liveAssistAiTimer);
+  liveAssistAiTimer = setTimeout(async () => {
+    liveAssistAiTimer = null;
+    if (!currentEncounter) return;
+    const latest =
+      recording && diarizer ? diarizer.getLiveSegments() : currentEncounter.segments || [];
+    liveAssistAiLoading = true;
+    renderLiveAssistPanel();
+    try {
+      const ai = await generateLiveAssistWithAi({
+        segments: latest,
+        speakers: currentEncounter.speakers,
+      });
+      if (ai) {
+        const rules = analyzeLiveAssist(latest, currentEncounter.speakers);
+        liveAssistSuggestions = mergeAssistSuggestions(rules, ai);
+      }
+    } catch {
+      /* keep rule-based suggestions */
+    } finally {
+      liveAssistAiLoading = false;
+      renderLiveAssistPanel();
+    }
+  }, CONFIG.liveAssistAiDebounceMs);
 }
 
 async function persist() {
@@ -443,15 +553,42 @@ async function startRecording() {
     useChunkedLive = !isLiveTranscriptionSupported() && settings.enhancedTranscription;
     const chunkMs = useChunkedLive ? CONFIG.liveChunkIntervalMs : 1000;
 
+    if (useChunkedLive) {
+      liveStatus = createLiveStatus({ phase: 'loading', detail: 'Preparing Whisper…' });
+      const recordBtn = document.getElementById('btn-record');
+      if (recordBtn) {
+        recordBtn.disabled = true;
+        recordBtn.textContent = 'Preparing…';
+      }
+      try {
+        await warmWhisperPipeline((p) => {
+          liveStatus = createLiveStatus({
+            phase: 'loading',
+            detail:
+              p.progress != null ? `Loading model ${Math.round(p.progress)}%` : 'Preparing Whisper…',
+          });
+        });
+      } catch (e) {
+        if (recordBtn) {
+          recordBtn.disabled = false;
+          recordBtn.textContent = '● Record';
+        }
+        showToast(e.message || 'Download Whisper in Settings first', 'error');
+        liveStatus = null;
+        return;
+      }
+    }
+
     vad = new VoiceActivityDetector({ threshold: CONFIG.speechEnergyThreshold });
     recorder = new AudioRecorder({
       chunkIntervalMs: chunkMs,
+      speechThreshold: CONFIG.speechEnergyThreshold,
       onWaveform: renderWaveform,
       onEnergy: onLiveSpeechActivity,
-      onChunk: (blob) => {
+      onChunk: (blob, meta) => {
         if (!useChunkedLive || !chunkedTranscriber || paused) return;
         const startMs = Math.max(0, (recorder?.getElapsedMs() || 0) - chunkMs);
-        chunkedTranscriber.enqueueChunk(blob, startMs);
+        chunkedTranscriber.enqueueChunk(blob, startMs, { hadSpeech: meta?.hadSpeech !== false });
       },
       onError: (e) => showToast(e.message, 'error'),
     });
@@ -460,7 +597,9 @@ async function startRecording() {
       speakers: currentEncounter.speakers,
       activeSpeakerId: currentEncounter.speakers[0]?.id,
     });
-    liveStatusText = 'Listening…';
+    liveAssistSegmentFingerprint = '';
+    liveAssistSuggestions = createEmptyAssist();
+    liveStatus = createLiveStatus({ phase: 'listening', detail: 'Listening…' });
 
     if (isLiveTranscriptionSupported()) {
       liveTranscriber = new LiveTranscriber({
@@ -480,27 +619,30 @@ async function startRecording() {
         onError: (e) => showToast(e.message, 'error'),
       });
       liveTranscriber.start();
-      liveStatusText = 'Live transcription active';
+      liveStatus = createLiveStatus({ phase: 'listening', detail: 'Live speech recognition active' });
     } else if (useChunkedLive) {
       chunkedTranscriber = new ChunkedLiveTranscriber({
         language: currentEncounter.settings.language,
         onSegments: async (segs) => {
+          diarizer.setProcessing({ active: false });
           diarizer.addChunkSegments(segs, diarizer.activeSpeakerId);
           syncSegments({ live: true });
           await persistFinalSegments();
           scheduleLiveUIUpdate();
           renderTranscriptPanel();
         },
-        onStatus: (msg) => {
-          liveStatusText = msg;
+        onStatus: (status) => {
+          liveStatus = status;
+          if (status.phase === 'processing') {
+            diarizer.setProcessing({ active: true, message: 'Transcribing…' });
+          } else if (status.phase !== 'queued') {
+            diarizer.setProcessing({ active: false });
+          }
           scheduleLiveUIUpdate();
         },
         onError: (e) => showToast(e.message || 'Live chunk failed', 'error'),
       });
       chunkedTranscriber.start();
-      liveStatusText = isWhisperReady()
-        ? 'Live chunk transcription active'
-        : 'Download Whisper in Settings for live captions';
     }
 
     recording = true;
@@ -510,6 +652,7 @@ async function startRecording() {
     scheduleLiveUIUpdate();
     showToast('Recording started', 'success');
   } catch (e) {
+    liveStatus = null;
     showToast(e.message || 'Microphone permission denied', 'error');
   }
 }
@@ -519,7 +662,7 @@ function pauseRecording() {
   liveTranscriber?.pause();
   chunkedTranscriber?.pause();
   paused = true;
-  liveStatusText = 'Paused';
+  liveStatus = createLiveStatus({ phase: 'paused', detail: 'Paused' });
   renderRecordPanel();
 }
 
@@ -528,11 +671,14 @@ function resumeRecording() {
   liveTranscriber?.resume();
   chunkedTranscriber?.resume();
   paused = false;
-  liveStatusText = isLiveTranscriptionSupported()
-    ? 'Live transcription active'
-    : useChunkedLive
-      ? 'Live chunk transcription active'
-      : 'Listening…';
+  liveStatus = createLiveStatus({
+    phase: 'listening',
+    detail: isLiveTranscriptionSupported()
+      ? 'Live speech recognition active'
+      : useChunkedLive
+        ? 'Live Whisper active'
+        : 'Listening…',
+  });
   renderRecordPanel();
 }
 
@@ -550,7 +696,13 @@ async function stopRecording() {
   const result = await recorder?.stop();
   recording = false;
   paused = false;
-  liveStatusText = '';
+  liveStatus = null;
+  liveAssistSegmentFingerprint = '';
+  if (liveAssistAiTimer) {
+    clearTimeout(liveAssistAiTimer);
+    liveAssistAiTimer = null;
+  }
+  liveAssistAiLoading = false;
   if (result?.blob) currentEncounter.audioBlob = result.blob;
   if (result?.durationMs) currentEncounter.durationMs = result.durationMs;
   syncSegments({ live: false });
@@ -563,10 +715,12 @@ async function stopRecording() {
   currentEncounter.insights = analyzeEncounter(currentEncounter);
   await persist();
   renderSession();
+  refreshLiveAssist();
   showToast('Recording saved', 'success');
 
   const settings = getAppSettings();
-  if (settings.enhancedTranscription && currentEncounter.audioBlob && !diarizer?.getSegments()?.length) {
+  const hasLiveSegments = (diarizer?.getSegments()?.length || 0) > 0;
+  if (settings.enhancedTranscription && currentEncounter.audioBlob && !hasLiveSegments) {
     runEnhancedTranscription();
   }
 }
@@ -578,10 +732,10 @@ function scheduleLiveUIUpdate() {
     if (!recording || !diarizer) return;
     updateLiveTranscriptFeed(diarizer.getLiveSegments(), currentEncounter.speakers, {
       partialId: diarizer._partialId,
-      statusText: liveStatusText,
+      status: liveStatus,
       activeSpeakerId: diarizer.activeSpeakerId,
     });
-    renderLiveAssistPanel();
+    refreshLiveAssist();
   }, CONFIG.liveUiThrottleMs);
 }
 
@@ -591,13 +745,18 @@ function onLiveSpeechActivity(level) {
   const wasSpeaking = vad.speaking;
   vad.tick(level);
   if (!wasSpeaking && vad.speaking) diarizer.onSpeechStart(elapsed);
-  if (wasSpeaking && !vad.speaking) diarizer.onSpeechEnd(elapsed);
+  if (wasSpeaking && !vad.speaking) {
+    diarizer.onSpeechEnd(elapsed);
+    if (useChunkedLive && recorder) recorder.flushChunk();
+  }
 }
 
 function getLiveModeLabel() {
-  if (isLiveTranscriptionSupported()) return 'Live speech recognition';
-  if (useChunkedLive && isWhisperReady()) return 'Live Whisper chunks (iOS)';
-  if (useChunkedLive) return 'Chunked mode — download Whisper in Settings';
+  if (isLiveTranscriptionSupported()) return 'Live speech recognition (browser)';
+  if (useChunkedLive && isWhisperReady()) {
+    return `Live Whisper · ~${CONFIG.liveChunkIntervalMs / 1000}s chunks + speech-end flush`;
+  }
+  if (useChunkedLive) return 'Live Whisper — model preloads when you tap Record';
   return 'Audio only — enable Whisper in Settings for live captions on iPhone';
 }
 
@@ -760,6 +919,18 @@ function renderSettings() {
         </label>
       </fieldset>
       <fieldset>
+        <legend>Live clinical assist</legend>
+        <p class="muted">Real-time suggestions during recording: follow-up questions, response phrasing, and differentials to consider. Rule-based instantly; AI enhances when configured below.</p>
+        <label class="checkbox">
+          <input type="checkbox" name="liveAssistEnabled" ${settings.liveAssistEnabled !== false ? 'checked' : ''}>
+          Show live assist suggestions
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" name="liveAssistAi" ${settings.liveAssistAi !== false ? 'checked' : ''}>
+          Use AI for assist (when API key set)
+        </label>
+      </fieldset>
+      <fieldset>
         <legend>Enhanced transcription (Whisper)</legend>
         <p class="muted">Runs fully on your device. Required for transcription on iPhone (live speech-to-text is not available in Safari).</p>
         <div id="whisper-status-wrap">${renderWhisperStatusHtml(whisperStatus)}</div>
@@ -770,8 +941,9 @@ function renderSettings() {
           <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
           Auto-transcribe after recording
         </label>
-        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (every ~5s). Download the model first.</p>
+        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Uses multi-thread WASM when cross-origin isolation is active.</p>
       </fieldset>
+      ${renderRuntimeCapabilitiesHtml(getRuntimeCapabilities())}
       <fieldset>
         <legend>Speakers</legend>
         <div id="speakers-editor">
@@ -820,9 +992,12 @@ function renderSettings() {
       timezone: fd.get('timezone'),
       language: fd.get('language'),
       enhancedTranscription: fd.get('enhancedTranscription') === 'on',
+      liveAssistEnabled: fd.get('liveAssistEnabled') === 'on',
+      liveAssistAi: fd.get('liveAssistAi') === 'on',
       speakers,
     };
     saveAppSettings(appSettings);
+    if (appSettings.enhancedTranscription) scheduleWhisperWarm();
     saveAiSettings({
       baseUrl: fd.get('baseUrl'),
       apiKey: fd.get('apiKey'),
@@ -858,6 +1033,7 @@ function renderSettings() {
     downloadBtn.disabled = true;
     try {
       await downloadWhisperModel(() => updateWhisperStatusPanel());
+      scheduleWhisperWarm();
       showToast('Whisper model ready', 'success');
     } catch (err) {
       console.error(err);
@@ -910,9 +1086,16 @@ function setupKeyboardShortcuts() {
 }
 
 function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  }
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker
+    .register('./sw.js')
+    .then(() => {
+      if (!window.crossOriginIsolated && !sessionStorage.getItem('tiger-coi-reload')) {
+        sessionStorage.setItem('tiger-coi-reload', '1');
+        window.location.reload();
+      }
+    })
+    .catch(() => {});
 }
 
 async function init() {
@@ -961,6 +1144,7 @@ async function init() {
   });
 
   await refreshHome();
+  scheduleWhisperWarm();
 }
 
 init();

@@ -22,11 +22,18 @@ export const CONFIG = {
   /** VAD: silence gap (ms) before auto speaker turn */
   silenceGapMs: 1200,
 
-  /** Live capture */
-  liveChunkIntervalMs: 5000,
-  liveUiThrottleMs: 120,
-  speechEnergyThreshold: 0.035,
+  /** Live capture — tuned for near-real-time on mobile */
+  liveChunkIntervalMs: 2500,
+  liveChunkMinMs: 1200,
+  liveChunkMaxQueue: 3,
+  liveUiThrottleMs: 80,
+  speechEnergyThreshold: 0.03,
   manualSpeakerLockMs: 4000,
+
+  /** Whisper live-chunk inference (shorter = faster per slice) */
+  whisperLiveChunkLengthS: 12,
+  whisperLiveStrideS: 2,
+  whisperWasmThreads: 4,
 
   /** Red-flag keywords (Tier 3 stretch, included) */
   redFlagKeywords: [
@@ -50,6 +57,14 @@ export const CONFIG = {
   disclaimer:
     'Documentation support only — not medical advice. Always verify with qualified clinicians before clinical decisions.',
 
-  whisperModel: 'Xenova/whisper-tiny.en',
-  whisperCdn: 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2',
+  whisperModel: 'onnx-community/whisper-tiny.en',
+  whisperCdn: 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/+esm',
+  whisperDtype: {
+    encoder_model: 'fp32',
+    decoder_model_merged: 'q4',
+  },
+
+  /** Live clinical assist */
+  liveAssistAiDebounceMs: 6000,
+  liveAssistMinSegments: 1,
 };

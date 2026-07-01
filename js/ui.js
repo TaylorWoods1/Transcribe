@@ -245,18 +245,63 @@ export function renderInsights(insights) {
     ${questions ? `<section class="insight-block card"><h3>Questions asked</h3><ul class="copy-contained">${questions}</ul></section>` : ''}`;
 }
 
-export function renderLiveAssist(segments, speakers) {
-  return renderLiveTranscriptFeed(segments, speakers, { maxHeight: true });
+export function formatLiveStatusText(status) {
+  if (!status) return 'Listening…';
+  if (typeof status === 'string') return status;
+  const parts = [status.detail || ''];
+  if (status.queueLength > 0) parts.push(`${status.queueLength} queued`);
+  if (status.processingMs != null) parts.push(`${status.processingMs}ms`);
+  if (status.chunksSkipped > 0) parts.push(`${status.chunksSkipped} skipped`);
+  return parts.filter(Boolean).join(' · ');
 }
 
-export function renderLiveTranscriptFeed(segments, speakers, { partialId, statusText, activeSpeakerId } = {}) {
+export function renderLiveStatusBar(status) {
+  const phase =
+    typeof status === 'object' && status?.phase ? status.phase : status ? 'listening' : 'idle';
+  const detail = formatLiveStatusText(status);
+  const queue =
+    typeof status === 'object' && status?.queueLength > 0
+      ? `<span class="live-queue-badge" aria-label="${status.queueLength} chunks queued">${status.queueLength}</span>`
+      : '';
+  const spinner = phase === 'processing' || phase === 'loading' ? '<span class="live-spinner" aria-hidden="true"></span>' : '';
+
+  return `
+    <div class="live-capture-status live-capture-status-${phase}" id="live-capture-status" role="status" aria-live="polite">
+      ${spinner}
+      <span class="live-status-phase">${escapeHtml(phaseLabel(phase))}</span>
+      <span class="live-status-detail">${escapeHtml(detail)}</span>
+      ${queue}
+    </div>`;
+}
+
+function phaseLabel(phase) {
+  switch (phase) {
+    case 'loading':
+      return 'Loading';
+    case 'processing':
+      return 'Processing';
+    case 'queued':
+      return 'Queued';
+    case 'paused':
+      return 'Paused';
+    case 'listening':
+      return 'Listening';
+    default:
+      return 'Ready';
+  }
+}
+
+export function renderLiveAssist(segments, speakers, options = {}) {
+  return renderLiveTranscriptFeed(segments, speakers, { maxHeight: true, ...options });
+}
+
+export function renderLiveTranscriptFeed(segments, speakers, { partialId, statusText, status, activeSpeakerId } = {}) {
   const speakerMap = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
   const list = segments || [];
   const active = speakers?.find((s) => s.id === activeSpeakerId);
+  const liveStatus = status || statusText;
 
-  const status = statusText
-    ? `<p class="live-capture-status" id="live-capture-status">${escapeHtml(statusText)}</p>`
-    : '<p class="live-capture-status" id="live-capture-status">Listening…</p>';
+  const statusBar = renderLiveStatusBar(liveStatus);
 
   const speakerBar = active
     ? `<div class="live-active-speaker" style="--speaker-color:${active.color}">
@@ -269,7 +314,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
     return `
       <section class="live-capture" aria-label="Live transcript">
         ${speakerBar}
-        ${status}
+        ${statusBar}
         <p class="muted live-empty">Conversation will appear here as you speak.</p>
       </section>`;
   }
@@ -278,8 +323,9 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
     .map((seg) => {
       const sp = speakerMap[seg.speakerId] || { name: 'Speaker', color: '#666' };
       const isPartial = seg.isFinal === false || seg.id === partialId;
+      const isProcessing = isPartial && /transcrib/i.test(seg.text || '');
       return `
-      <div class="live-line ${isPartial ? 'live-line-partial' : ''}" data-id="${seg.id}">
+      <div class="live-line ${isPartial ? 'live-line-partial' : ''} ${isProcessing ? 'live-line-processing' : ''}" data-id="${seg.id}">
         <span class="live-line-time">${formatTimestamp(seg.startMs || 0)}</span>
         <span class="live-line-speaker" style="color:${sp.color}">${escapeHtml(sp.name)}</span>
         <span class="live-line-text copy-contained">${escapeHtml(seg.text)}</span>
@@ -290,7 +336,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
   return `
     <section class="live-capture" aria-label="Live transcript">
       ${speakerBar}
-      ${status}
+      ${statusBar}
       <div class="live-transcript-feed" id="live-transcript-feed" aria-live="polite" aria-atomic="false">
         ${rows}
       </div>
@@ -303,6 +349,89 @@ export function updateLiveTranscriptFeed(segments, speakers, options = {}) {
   wrap.innerHTML = renderLiveTranscriptFeed(segments, speakers, options);
   const feed = document.getElementById('live-transcript-feed');
   if (feed) feed.scrollTop = feed.scrollHeight;
+}
+
+export function renderLiveAssistSuggestions(assist, { loading = false, enabled = true } = {}) {
+  if (!enabled) {
+    return `
+      <div class="assist-panel">
+        <p class="muted">Live assist is off. Enable it in Settings.</p>
+      </div>`;
+  }
+
+  const disclaimer = `<div class="assist-disclaimer copy-contained" role="note">${escapeHtml(getDisclaimer())}</div>`;
+
+  if (loading) {
+    return `
+      <div class="assist-panel">
+        ${disclaimer}
+        <div class="assist-loading">
+          <span class="live-spinner" aria-hidden="true"></span>
+          <span>Updating AI suggestions…</span>
+        </div>
+      </div>`;
+  }
+
+  const flags = (assist?.considerations || [])
+    .map(
+      (f) =>
+        `<div class="alert alert-danger assist-alert" role="alert">${escapeHtml(f.message || f.keyword)}</div>`
+    )
+    .join('');
+
+  const questions = (assist?.questions || [])
+    .map(
+      (q) =>
+        `<li class="assist-item assist-question">
+          <span class="assist-item-text copy-contained">${escapeHtml(q.text)}</span>
+          ${q.reason ? `<span class="assist-item-meta">${escapeHtml(q.reason)}</span>` : ''}
+        </li>`
+    )
+    .join('');
+
+  const responses = (assist?.responses || [])
+    .map(
+      (r) =>
+        `<li class="assist-item assist-response assist-response-${r.type || 'clarify'}">
+          <span class="assist-response-type">${escapeHtml(r.type || 'suggestion')}</span>
+          <span class="assist-item-text copy-contained">${escapeHtml(r.text)}</span>
+        </li>`
+    )
+    .join('');
+
+  const differentials = (assist?.differentials || [])
+    .map(
+      (d) =>
+        `<li class="assist-item assist-diff assist-diff-${d.urgency || 'routine'}">
+          <span class="assist-diff-urgency">${escapeHtml(d.urgency || 'routine')}</span>
+          <span class="assist-item-text copy-contained">${escapeHtml(d.text)}</span>
+          ${d.reason ? `<span class="assist-item-meta">Triggered by: ${escapeHtml(d.reason)}</span>` : ''}
+        </li>`
+    )
+    .join('');
+
+  const hasContent = flags || questions || responses || differentials;
+  const sourceLabel = assist?.source
+    ? `<p class="assist-source muted">Source: ${escapeHtml(assist.source === 'mixed' ? 'rules + AI' : assist.source)}</p>`
+    : '';
+
+  if (!hasContent) {
+    return `
+      <div class="assist-panel">
+        ${disclaimer}
+        <p class="muted assist-empty">Suggestions will appear as the conversation builds — questions to ask, phrasing ideas, and differentials to consider.</p>
+      </div>`;
+  }
+
+  return `
+    <div class="assist-panel">
+      ${disclaimer}
+      ${flags}
+      ${questions ? `<section class="assist-section card"><h3>Suggested questions</h3><ul class="assist-list">${questions}</ul></section>` : ''}
+      ${responses ? `<section class="assist-section card"><h3>Response ideas</h3><ul class="assist-list">${responses}</ul></section>` : ''}
+      ${differentials ? `<section class="assist-section card"><h3>Differentials to consider</h3><ul class="assist-list">${differentials}</ul></section>` : ''}
+      ${sourceLabel}
+    </div>`;
 }
 
 export function setTheme(dark) {

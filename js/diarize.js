@@ -171,9 +171,22 @@ export class DiarizationTracker {
   addChunkSegments(chunkSegments, defaultSpeakerId) {
     for (const w of chunkSegments) {
       if (!w.text?.trim()) continue;
+      const speakerId = defaultSpeakerId || this.activeSpeakerId;
+      const last = this.segments[this.segments.length - 1];
+
+      if (last?.isFinal !== false && last?.speakerId === speakerId && last?.text) {
+        const merged = mergeOverlappingText(last.text, w.text);
+        if (merged !== w.text && merged.length >= last.text.length) {
+          last.text = merged;
+          last.endMs = Math.max(last.endMs || 0, w.endMs || 0);
+          last.confidence = w.confidence ?? last.confidence;
+          continue;
+        }
+      }
+
       this.segments.push(
         createSegment({
-          speakerId: defaultSpeakerId || this.activeSpeakerId,
+          speakerId,
           startMs: w.startMs,
           endMs: w.endMs,
           text: w.text,
@@ -184,6 +197,57 @@ export class DiarizationTracker {
     this._partialId = null;
     return this.segments;
   }
+
+  setProcessing({ active, message } = {}) {
+    if (!active) {
+      if (this._partialId) {
+        const idx = this.segments.findIndex((s) => s.id === this._partialId);
+        if (idx >= 0) this.segments.splice(idx, 1);
+        this._partialId = null;
+      }
+      return;
+    }
+    const text = message || 'Transcribing…';
+    if (this._partialId) {
+      const idx = this.segments.findIndex((s) => s.id === this._partialId);
+      if (idx >= 0) {
+        this.segments[idx] = { ...this.segments[idx], text, isFinal: false };
+        return this.segments[idx];
+      }
+    }
+    const seg = createSegment({
+      speakerId: this.activeSpeakerId,
+      startMs: this.lastSpeechStartMs || 0,
+      endMs: this.lastSpeechEndMs || 0,
+      text,
+      isFinal: false,
+    });
+    this._partialId = seg.id;
+    this.segments.push(seg);
+    return seg;
+  }
+}
+
+/** Merge overlapping words between consecutive chunk transcriptions. */
+export function mergeOverlappingText(prevText, nextText) {
+  const a = (prevText || '').trim();
+  const b = (nextText || '').trim();
+  if (!a) return b;
+  if (!b) return a;
+
+  const wordsA = a.split(/\s+/);
+  const wordsB = b.split(/\s+/);
+  const maxOverlap = Math.min(wordsA.length, wordsB.length, 10);
+
+  for (let len = maxOverlap; len >= 2; len--) {
+    const suffix = wordsA.slice(-len).join(' ').toLowerCase().replace(/[^\w\s']/g, '');
+    const prefix = wordsB.slice(0, len).join(' ').toLowerCase().replace(/[^\w\s']/g, '');
+    if (suffix && suffix === prefix) {
+      return `${wordsA.join(' ')} ${wordsB.slice(len).join(' ')}`.trim();
+    }
+  }
+
+  return `${a} ${b}`.trim();
 }
 
 export function formatTimestamp(ms) {
