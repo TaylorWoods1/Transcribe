@@ -656,6 +656,151 @@ body {
   padding-left: 1.1rem;
 }
 
+/* Whisper model status (Settings) */
+.whisper-status {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--surface-2);
+}
+
+.whisper-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.whisper-status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.whisper-status-not_downloaded .whisper-status-badge {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.whisper-status-downloading .whisper-status-badge {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.whisper-status-cached .whisper-status-badge,
+.whisper-status-active .whisper-status-badge {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.whisper-status-transcribing .whisper-status-badge {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.whisper-status-error .whisper-status-badge {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+[data-theme='dark'] .whisper-status-not_downloaded .whisper-status-badge {
+  background: #334155;
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .whisper-status-downloading .whisper-status-badge {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .whisper-status-cached .whisper-status-badge,
+[data-theme='dark'] .whisper-status-active .whisper-status-badge {
+  background: #064e3b;
+  color: #6ee7b7;
+}
+
+[data-theme='dark'] .whisper-status-transcribing .whisper-status-badge {
+  background: #78350f;
+  color: #fcd34d;
+}
+
+[data-theme='dark'] .whisper-status-error .whisper-status-badge {
+  background: #7f1d1d;
+  color: #fca5a5;
+}
+
+.whisper-status-model {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.whisper-status-detail {
+  margin: 0 0 10px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.whisper-progress {
+  height: 8px;
+  background: var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.whisper-progress-bar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.whisper-progress-label {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.whisper-status-meta {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.whisper-status-meta div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.whisper-status-meta dt {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.whisper-status-meta dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+
+.whisper-actions {
+  margin-bottom: 12px;
+}
+
+.whisper-actions .btn {
+  width: 100%;
+}
+
 /* Settings */
 .settings-page {
   width: 100%;
