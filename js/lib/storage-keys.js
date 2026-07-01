@@ -8,6 +8,7 @@ export const STORAGE_KEYS = Object.freeze({
   THEME: 'tiger-theme',
   WHISPER_STATUS: 'tiger-whisper-status',
   COI_RELOAD: 'tiger-coi-reload',
+  DB_FLAGS: 'tiger-db-flags',
 });
 
 const LEGACY_MAP = Object.freeze({

@@ -12,6 +12,7 @@ js/lib/                                Shared pure utilities (no DOM)
   utils.js                             Formatting, escaping, sanitization
   clinical.js                          Transcript text, red flags, overlap merge
   storage-keys.js                      localStorage keys + migration
+  types.js                             JSDoc typedefs (Encounter, Segment, …)
   ai-client.js                         OpenAI-compatible HTTP client
 js/db.js                               IndexedDB persistence
 js/audio.js                            MediaRecorder + playback
@@ -24,7 +25,7 @@ js/ui.js                               DOM rendering
 
 ## Data model
 
-### Encounter (IndexedDB `lucy-scribe` / `encounters`)
+### Encounter (IndexedDB `tiger-scribe` / `encounters`)
 
 | Field | Type | Notes |
 |-------|------|-------|
@@ -59,7 +60,7 @@ js/ui.js                               DOM rendering
 
 ## Service worker
 
-- Cache name: `tiger-scribe-v10` (bump on breaking shell changes)
+- Cache name: `tiger-scribe-v12` (bump on breaking shell changes)
 - Injects **COOP/COEP** headers for `SharedArrayBuffer` / multi-thread WASM
 - Does **not** cache Whisper models from CDN
 
@@ -67,11 +68,15 @@ js/ui.js                               DOM rendering
 
 ```bash
 npm ci
-npm run check   # lint + test
+npm run generate:icons   # PWA PNGs from icons/icon.svg
+npm run check            # lint + unit tests + Playwright smoke
 ```
 
-Pure logic lives in `js/lib/` and feature modules — tests in `tests/` use Vitest (Node).
+- **Unit / integration** — Vitest in `tests/`; IndexedDB via `fake-indexeddb` (`tests/db.test.js`)
+- **E2E smoke** — Playwright in `e2e/` against `python3 -m http.server 4173`
 
-## Naming note
+Pure logic lives in `js/lib/` and feature modules.
 
-IndexedDB database remains `lucy-scribe` for backward compatibility. localStorage keys migrated from `lucy-*` to `tiger-*` on first load.
+## Migration
+
+On first open after upgrade, `js/db.js` copies encounters from legacy IndexedDB `lucy-scribe` into `tiger-scribe` once (flag in `tiger-db-flags`). localStorage keys migrate from `lucy-*` to `tiger-*` on every app init via `migrateStorageKeys()`.

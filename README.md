@@ -19,9 +19,10 @@ A local-first, vanilla Progressive Web App for clinical encounter transcription,
 - **IndexedDB** — all encounter data stays on device
 
 ### Quality & security
-- **Vitest** unit tests for pure logic (`npm test`)
+- **Vitest** unit + IndexedDB integration tests (`npm test`)
+- **Playwright** E2E smoke tests (`npm run test:e2e`)
 - **ESLint** static analysis (`npm run lint`)
-- **CI** runs lint + tests before every deploy
+- **CI** runs lint + tests + E2E before every deploy
 - **CSP**, HTML escaping, color sanitization, AI URL validation
 - See [SECURITY.md](SECURITY.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -33,8 +34,9 @@ python3 -m http.server 8080
 
 # Install dev tooling
 npm ci
+npm run generate:icons
 
-# Lint + test
+# Lint + unit + E2E
 npm run check
 ```
 
@@ -74,13 +76,14 @@ npm run check
 ```
 index.html              Entry point + CSP
 config.js               App configuration
-sw.js                   Service worker (v11) + COI headers
+sw.js                   Service worker (v12) + COI headers
 js/
   app.js                Orchestration
   lib/                  Shared utilities (tested)
     utils.js            Formatting, escaping, sanitization
     clinical.js         Transcript text, red flags
     storage-keys.js     localStorage keys + migration
+    types.js            JSDoc typedefs
     ai-client.js        OpenAI-compatible HTTP client
   db.js                 IndexedDB
   audio.js              Recording & playback
@@ -89,13 +92,15 @@ js/
   assist.js             Live clinical suggestions
   ai.js                 Optional cloud AI
   ui.js                 DOM rendering
-tests/                  Vitest unit tests
+tests/                  Vitest unit + db integration tests
+e2e/                    Playwright smoke tests
+scripts/                Dev scripts (icon generation)
 .github/workflows/      CI + deploy
 ```
 
 ## Deployment
 
-Pushes to `main` run **CI** (lint + test) then deploy to **`gh-pages`** via GitHub Actions.
+Pushes to `main` run **CI** (lint + unit + E2E) then deploy to **`gh-pages`** via GitHub Actions.
 
 ## Disclaimer
 

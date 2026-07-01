@@ -7,14 +7,19 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint js tests",
-    "lint:fix": "eslint js tests --fix",
-    "check": "npm run lint && npm run test"
+    "test:e2e": "playwright test",
+    "lint": "eslint js tests e2e",
+    "lint:fix": "eslint js tests e2e --fix",
+    "generate:icons": "node scripts/generate-icons.mjs",
+    "check": "npm run lint && npm run test && npm run test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
+    "@playwright/test": "^1.53.2",
     "eslint": "^9.28.0",
+    "fake-indexeddb": "^6.0.1",
     "globals": "^16.2.0",
+    "sharp": "^0.34.2",
     "vitest": "^3.2.4"
   }
 }
