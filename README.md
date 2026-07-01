@@ -3,86 +3,62 @@
 > **Live app:** https://taylorwoods1.github.io/Transcribe/  
 > (Must include `/Transcribe/` — the root `taylorwoods1.github.io` URL will show “site not found”.)
 
-A local-first, vanilla Progressive Web App for clinical encounter transcription, speaker diarization, SOAP note generation, and action-item extraction. No build step, no framework, no backend required for core functionality.
+A local-first, vanilla Progressive Web App for clinical encounter transcription, speaker diarization, SOAP note generation, and action-item extraction. No build step for production; optional dev tooling for tests and lint.
 
 ## Features
 
-### Tier 1 (core)
+### Core
 - **Encounters** — create, list, search, open, and delete sessions
 - **Audio recording** — pause/resume, waveform visualization via MediaRecorder + Web Audio API
-- **Live transcription** — Web Speech API (Chrome recommended)
-- **Enhanced transcription** — opt-in Whisper via `@xenova/transformers` (CDN, ~40MB first download)
+- **Live transcription** — Web Speech API (Chrome) or chunked Whisper (iOS)
+- **Enhanced transcription** — on-device Whisper via `@huggingface/transformers` (CDN, ~40MB first download)
+- **Live clinical assist** — rule-based questions, response ideas, differentials; optional AI enhancement
 - **Diarization** — speaker switching, silence-gap turn detection, manual segment editing
-- **Transcript UI** — timestamps, speaker labels, inline edit, in-session search
-- **SOAP notes** — Subjective, Objective, Assessment, Plan + freeform (extractive generation)
-- **Action items** — rule-based extraction with optional AI enhancement
+- **SOAP notes** — extractive generation + optional AI
 - **Export** — JSON, Markdown, plain text, SRT, VTT, and audio
-- **Settings** — timezone (default Australia/Sydney GMT+10), language, speakers, API key, enhanced mode
-- **IndexedDB** — audio blobs, transcripts, and notes stored locally
+- **IndexedDB** — all encounter data stays on device
 
-### Tier 2
-- Optional AI summarization (OpenAI-compatible API, user-supplied key)
-- Live assist panel during recording
-- Full-text search across encounters
-- Keyboard shortcuts (`R` record/stop, `S` switch speaker)
-- Dark mode
-- Audio playback with click-to-seek on transcript segments
+### Quality & security
+- **Vitest** unit tests for pure logic (`npm test`)
+- **ESLint** static analysis (`npm run lint`)
+- **CI** runs lint + tests before every deploy
+- **CSP**, HTML escaping, color sanitization, AI URL validation
+- See [SECURITY.md](SECURITY.md) and [ARCHITECTURE.md](ARCHITECTURE.md)
 
-### Tier 3 (included where feasible)
-- Red-flag keyword detection in Insights
-- Confidence scores on Whisper segments
-- Offline transcription via imported audio files
+## Development
+
+```bash
+# Serve the app (required for ES modules + service worker)
+python3 -m http.server 8080
+
+# Install dev tooling
+npm ci
+
+# Lint + test
+npm run check
+```
 
 ## Live app (GitHub Pages)
 
-**Correct URL (copy exactly):**
+**URL:** https://taylorwoods1.github.io/Transcribe/
 
-### https://taylorwoods1.github.io/Transcribe/
+### Install on iPhone
+1. Open Safari → URL above
+2. Share → **Add to Home Screen** → name **Tiger**
 
-> ⚠️ `https://taylorwoods1.github.io/` alone will **not** work — that’s your account root, not this project. The repo name `Transcribe` is part of the path (capital **T**).
-
-### Install on iPhone / iPad (Add to Home Screen)
-
-1. Open **Safari** and go to **https://taylorwoods1.github.io/Transcribe/**
-2. Tap the **Share** button (square with arrow)
-3. Scroll down and tap **Add to Home Screen**
-4. Name it **Tiger** and tap **Add**
-
-The app opens full-screen like a native app. Your data stays on the device in IndexedDB.
-
-### Enhanced transcription (Whisper) on iPhone
-
-1. Open **Settings → Enhanced transcription (Whisper)**
-2. Tap **Download Whisper model** and wait for status **Downloaded** or **Active** (use Wi‑Fi, keep app open)
-3. Enable **Auto-transcribe after recording** if you want it to run automatically
-4. Record a session, stop, and wait for the transcript
-
-Status meanings: **Not downloaded** · **Downloading** (with %) · **Downloaded** (saved on device) · **Active** (loaded in memory) · **Transcribing** · **Error**
-
-## Local development
-
-No install or build step required. Serve the repository root as static files:
-
-```bash
-python3 -m http.server 8080
-```
-
-Then open [http://localhost:8080](http://localhost:8080).
-
-> **Note:** ES modules and service workers require an HTTP server — `file://` will not work.
-
-## Install as PWA
-
-1. Open the app in Chrome (Android/desktop) or Safari (iOS).
-2. Use **Add to Home Screen** / **Install app**.
-3. The service worker caches the app shell for offline use.
+### Whisper on iPhone
+1. Settings → download Whisper model
+2. Enable **Auto-transcribe after recording**
+3. Check **On-device runtime** shows multi-thread WASM after one reload
 
 ## Privacy model
 
-- All encounter data, audio, and transcripts stay in **IndexedDB** on your device.
-- Optional AI settings (API URL + key) are stored in **localStorage** only.
-- Whisper models are downloaded from jsDelivr CDN when you enable enhanced transcription — they are cached by the browser, not by our service worker.
-- Export is explicit — nothing leaves your device unless you export or call an AI API you configure.
+| Data | Storage | Leaves device? |
+|------|---------|----------------|
+| Encounters, audio, transcripts | IndexedDB | Only via export |
+| Settings | localStorage (`tiger-*`) | No |
+| AI API key | localStorage | User-configured HTTPS API only |
+| Whisper model | Browser cache (jsDelivr) | Downloaded on demand |
 
 ## Browser support
 
@@ -90,58 +66,36 @@ Then open [http://localhost:8080](http://localhost:8080).
 |---------|--------|--------|---------|
 | Recording | ✅ | ✅ | ✅ |
 | Live STT | ✅ | ❌ | ❌ |
-| Enhanced (Whisper) | ✅ | ✅* | ✅* |
+| Whisper live chunks | ✅ | ✅ | ✅ |
 | PWA install | ✅ | ✅ | Limited |
-
-\*Whisper in-browser is CPU-intensive; desktop Chrome recommended for enhanced mode.
-
-## Optional AI setup
-
-1. Open **Settings**.
-2. Enter your OpenAI-compatible **API base URL** and **API key**.
-3. Use **Generate SOAP notes**, **AI summary**, or **Extract actions** for cloud-assisted results.
-
-Without an API key, the app uses **extractive fallback** summarization so core workflows are never blocked.
-
-## Keyboard shortcuts
-
-| Key | Action |
-|-----|--------|
-| `R` | Start / stop recording |
-| `S` | Cycle active speaker |
 
 ## Project structure
 
 ```
-index.html          Entry point
-manifest.json       PWA manifest
-sw.js               Service worker (app shell only)
-config.js           App configuration
-css/styles.css      Styles
+index.html              Entry point + CSP
+config.js               App configuration
+sw.js                   Service worker (v11) + COI headers
 js/
-  app.js            Orchestration & routing
-  db.js             IndexedDB
-  audio.js          Recording & playback
-  transcribe-live.js
-  transcribe-whisper.js
-  diarize.js
-  notes.js
-  actions.js
-  ai.js
-  insights.js
-  export.js
-  ui.js
-icons/icon.svg
-.github/workflows/deploy.yml
+  app.js                Orchestration
+  lib/                  Shared utilities (tested)
+    utils.js            Formatting, escaping, sanitization
+    clinical.js         Transcript text, red flags
+    storage-keys.js     localStorage keys + migration
+    ai-client.js        OpenAI-compatible HTTP client
+  db.js                 IndexedDB
+  audio.js              Recording & playback
+  transcribe-*.js       Speech-to-text pipelines
+  diarize.js            Speaker turns
+  assist.js             Live clinical suggestions
+  ai.js                 Optional cloud AI
+  ui.js                 DOM rendering
+tests/                  Vitest unit tests
+.github/workflows/      CI + deploy
 ```
 
 ## Deployment
 
-Pushes to `main` deploy to the **`gh-pages`** branch via GitHub Actions (`peaceiris/actions-gh-pages@v4`).
-
-**GitHub Pages setup:** Settings → Pages → Source: **Deploy from a branch** → branch **`gh-pages`** → folder **`/ (root)`**.
-
-**Live URL:** https://taylorwoods1.github.io/Transcribe/
+Pushes to `main` run **CI** (lint + test) then deploy to **`gh-pages`** via GitHub Actions.
 
 ## Disclaimer
 
@@ -149,4 +103,4 @@ Pushes to `main` deploy to the **`gh-pages`** branch via GitHub Actions (`peacei
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)

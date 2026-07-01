@@ -3,6 +3,10 @@
  */
 import { CONFIG } from '../config.js';
 import { createId } from './db.js';
+import { mergeOverlappingText } from './lib/clinical.js';
+import { formatTimestamp } from './lib/utils.js';
+
+export { formatTimestamp };
 
 export function createSegment({ speakerId, startMs, endMs, text, confidence, isFinal = true }) {
   return {
@@ -226,35 +230,4 @@ export class DiarizationTracker {
     this.segments.push(seg);
     return seg;
   }
-}
-
-/** Merge overlapping words between consecutive chunk transcriptions. */
-export function mergeOverlappingText(prevText, nextText) {
-  const a = (prevText || '').trim();
-  const b = (nextText || '').trim();
-  if (!a) return b;
-  if (!b) return a;
-
-  const wordsA = a.split(/\s+/);
-  const wordsB = b.split(/\s+/);
-  const maxOverlap = Math.min(wordsA.length, wordsB.length, 10);
-
-  for (let len = maxOverlap; len >= 2; len--) {
-    const suffix = wordsA.slice(-len).join(' ').toLowerCase().replace(/[^\w\s']/g, '');
-    const prefix = wordsB.slice(0, len).join(' ').toLowerCase().replace(/[^\w\s']/g, '');
-    if (suffix && suffix === prefix) {
-      return `${wordsA.join(' ')} ${wordsB.slice(len).join(' ')}`.trim();
-    }
-  }
-
-  return `${a} ${b}`.trim();
-}
-
-export function formatTimestamp(ms) {
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }

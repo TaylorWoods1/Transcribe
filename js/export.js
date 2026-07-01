@@ -1,12 +1,8 @@
 /**
  * Export encounters to JSON, Markdown, TXT, SRT, VTT.
  */
-import { formatTimestamp } from './diarize.js';
-import { buildTranscriptText } from './notes.js';
-
-function speakerName(speakers, id) {
-  return speakers.find((s) => s.id === id)?.name || 'Speaker';
-}
+import { formatTimestamp, speakerName, toSrtTime, toVttTime, safeFilename } from './lib/utils.js';
+import { buildTranscriptText } from './lib/clinical.js';
 
 export function exportJson(encounter) {
   const copy = { ...encounter };
@@ -56,18 +52,6 @@ export function exportPlainText(encounter) {
   return txt;
 }
 
-function toSrtTime(ms) {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  const s = Math.floor((ms % 60000) / 1000);
-  const msRem = ms % 1000;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(msRem).padStart(3, '0')}`;
-}
-
-function toVttTime(ms) {
-  return toSrtTime(ms).replace(',', '.');
-}
-
 export function exportSrt(encounter) {
   const lines = [];
   (encounter.segments || []).forEach((seg, i) => {
@@ -105,15 +89,11 @@ export function downloadFile(filename, content, mime = 'text/plain') {
 
 export async function exportAudio(encounter) {
   if (!encounter.audioBlob) throw new Error('No audio recorded for this session.');
-  downloadFile(`${safeName(encounter.title)}.webm`, encounter.audioBlob, encounter.audioBlob.type);
-}
-
-function safeName(title) {
-  return (title || 'encounter').replace(/[^\w\-]+/g, '_').slice(0, 60);
+  downloadFile(`${safeFilename(encounter.title)}.webm`, encounter.audioBlob, encounter.audioBlob.type);
 }
 
 export function exportEncounter(encounter, format) {
-  const base = safeName(encounter.title);
+  const base = safeFilename(encounter.title);
   switch (format) {
     case 'json':
       downloadFile(`${base}.json`, exportJson(encounter), 'application/json');

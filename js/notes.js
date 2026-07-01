@@ -1,20 +1,12 @@
 /**
  * SOAP note templates and generation helpers.
  */
-import { CONFIG } from '../config.js';
+import { buildTranscriptText, getDisclaimer } from './lib/clinical.js';
+
+export { buildTranscriptText, getDisclaimer };
 
 export function emptyNotes() {
   return { subjective: '', objective: '', assessment: '', plan: '', freeform: '' };
-}
-
-export function buildTranscriptText(segments, speakers) {
-  const byId = Object.fromEntries((speakers || []).map((s) => [s.id, s]));
-  return (segments || [])
-    .map((seg) => {
-      const name = byId[seg.speakerId]?.name || 'Speaker';
-      return `${name}: ${seg.text}`;
-    })
-    .join('\n');
 }
 
 /** Extractive note generation from transcript segments */
@@ -22,7 +14,6 @@ export function generateNotesFromSegments(segments, speakers) {
   const transcript = buildTranscriptText(segments, speakers);
   const lines = transcript.split('\n').filter(Boolean);
   const patientLines = lines.filter((l) => /patient/i.test(l.split(':')[0]));
-  const clinicianLines = lines.filter((l) => /clinician|doctor|nurse|provider/i.test(l.split(':')[0]));
 
   const subjective = patientLines.map((l) => l.replace(/^[^:]+:\s*/, '')).join(' ').trim();
   const objective = extractObjective(transcript);
@@ -59,9 +50,7 @@ function extractObjective(text) {
 }
 
 function extractAssessment(text) {
-  const patterns = [
-    /\b(?:diagnosis|impression|assessment|likely|consistent with|suspected)[^.!?]{0,150}/gi,
-  ];
+  const patterns = [/\b(?:diagnosis|impression|assessment|likely|consistent with|suspected)[^.!?]{0,150}/gi];
   for (const p of patterns) {
     const m = text.match(p);
     if (m?.length) return m.slice(0, 3).join('. ');
@@ -70,9 +59,7 @@ function extractAssessment(text) {
 }
 
 function extractPlan(text) {
-  const patterns = [
-    /\b(?:plan|will|follow[- ]?up|prescribe|refer|order|arrange|advise|recommend)[^.!?]{0,150}/gi,
-  ];
+  const patterns = [/\b(?:plan|will|follow[- ]?up|prescribe|refer|order|arrange|advise|recommend)[^.!?]{0,150}/gi];
   for (const p of patterns) {
     const m = text.match(p);
     if (m?.length) return m.slice(0, 5).join('. ');
@@ -92,7 +79,3 @@ export const NOTE_SECTIONS = [
   { key: 'plan', label: 'Plan', hint: 'Treatment and follow-up plan' },
   { key: 'freeform', label: 'Freeform', hint: 'Additional notes' },
 ];
-
-export function getDisclaimer() {
-  return CONFIG.disclaimer;
-}

@@ -4,6 +4,15 @@
 import { formatTimestamp } from './diarize.js';
 import { NOTE_SECTIONS } from './notes.js';
 import { getDisclaimer } from './insights.js';
+import {
+  escapeHtml,
+  formatDate,
+  formatDuration,
+  sanitizeColor,
+} from './lib/utils.js';
+import { STORAGE_KEYS } from './lib/storage-keys.js';
+
+export { escapeHtml, formatDate, formatDuration };
 
 let toastContainer = null;
 
@@ -23,29 +32,6 @@ export function showToast(message, type = 'info', duration = 3200) {
     el.classList.remove('visible');
     setTimeout(() => el.remove(), 300);
   }, duration);
-}
-
-export function escapeHtml(str) {
-  return String(str ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-export function formatDate(ts) {
-  return new Date(ts).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-}
-
-export function formatDuration(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  return `${m}:${String(s % 60).padStart(2, '0')}`;
 }
 
 export function renderEncounterList(encounters, handlers = {}) {
@@ -125,7 +111,7 @@ export function renderTranscript(segments, speakers, options = {}) {
       <article class="transcript-segment card${active}" role="listitem" data-id="${seg.id}" data-start="${seg.startMs}">
         <div class="segment-header">
           <button class="segment-time" type="button" data-seek="${seg.startMs}" aria-label="Seek to ${formatTimestamp(seg.startMs)}">${formatTimestamp(seg.startMs)}</button>
-          <select class="segment-speaker" data-id="${seg.id}" aria-label="Speaker for segment" style="--speaker-color:${sp.color}">
+          <select class="segment-speaker" data-id="${seg.id}" aria-label="Speaker for segment" style="--speaker-color:${sanitizeColor(sp.color)}">
             ${(speakers || []).map((s) => `<option value="${s.id}" ${s.id === seg.speakerId ? 'selected' : ''}>${escapeHtml(s.name)}</option>`).join('')}
           </select>
           ${seg.confidence != null ? `<span class="confidence" title="Confidence">${Math.round(seg.confidence * 100)}%</span>` : ''}
@@ -304,7 +290,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
   const statusBar = renderLiveStatusBar(liveStatus);
 
   const speakerBar = active
-    ? `<div class="live-active-speaker" style="--speaker-color:${active.color}">
+    ? `<div class="live-active-speaker" style="--speaker-color:${sanitizeColor(active.color)}">
         <span class="live-pulse" aria-hidden="true"></span>
         <span>Speaking: <strong>${escapeHtml(active.name)}</strong></span>
       </div>`
@@ -327,7 +313,7 @@ export function renderLiveTranscriptFeed(segments, speakers, { partialId, status
       return `
       <div class="live-line ${isPartial ? 'live-line-partial' : ''} ${isProcessing ? 'live-line-processing' : ''}" data-id="${seg.id}">
         <span class="live-line-time">${formatTimestamp(seg.startMs || 0)}</span>
-        <span class="live-line-speaker" style="color:${sp.color}">${escapeHtml(sp.name)}</span>
+        <span class="live-line-speaker" style="color:${sanitizeColor(sp.color)}">${escapeHtml(sp.name)}</span>
         <span class="live-line-text copy-contained">${escapeHtml(seg.text)}</span>
       </div>`;
     })
@@ -436,11 +422,11 @@ export function renderLiveAssistSuggestions(assist, { loading = false, enabled =
 
 export function setTheme(dark) {
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-  localStorage.setItem('lucy-theme', dark ? 'dark' : 'light');
+  localStorage.setItem(STORAGE_KEYS.THEME, dark ? 'dark' : 'light');
 }
 
 export function loadTheme() {
-  const saved = localStorage.getItem('lucy-theme');
+  const saved = localStorage.getItem(STORAGE_KEYS.THEME);
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   setTheme(saved ? saved === 'dark' : prefersDark);
 }

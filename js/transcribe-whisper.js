@@ -1,11 +1,15 @@
 /**
- * Optional enhanced transcription via @xenova/transformers (CDN).
+ * Optional enhanced transcription via @huggingface/transformers (CDN).
  * Includes explicit download + status tracking for Settings UI.
  */
 import { CONFIG } from '../config.js';
 import { getRuntimeCapabilities, probeWebGPU } from './runtime.js';
+import {
+  STORAGE_KEYS,
+} from './lib/storage-keys.js';
+import { clampPercent } from './lib/utils.js';
 
-const STATUS_KEY = 'tiger-whisper-status';
+const STATUS_KEY = STORAGE_KEYS.WHISPER_STATUS;
 const MODEL_LABEL = 'Whisper Tiny (English)';
 const MODEL_SIZE_LABEL = '~40 MB';
 
@@ -63,10 +67,10 @@ export function getWhisperStatus() {
   const stored = readStoredStatus();
   const progress = loadProgress?.progress;
 
-  if (isTranscribing) {
+  if (isTranscribing || liveTranscribeCount > 0) {
     return {
       state: 'transcribing',
-      label: 'Transcribing…',
+      label: liveTranscribeCount > 0 ? 'Live transcribing…' : 'Transcribing…',
       detail: 'Processing audio on this device. Keep the app open.',
       progress: null,
       ...stored,
@@ -223,12 +227,8 @@ export async function warmWhisperPipeline(onProgress) {
 export async function downloadWhisperModel(onProgress) {
   writeStoredStatus({ state: 'downloading', error: null });
   notifyStatusListeners();
-  try {
-    await loadWhisperPipeline(onProgress);
-    return getWhisperStatus();
-  } catch (err) {
-    throw err;
-  }
+  await loadWhisperPipeline(onProgress);
+  return getWhisperStatus();
 }
 
 export function isWhisperReady() {
@@ -309,7 +309,7 @@ export function renderWhisperStatusHtml(status = getWhisperStatus()) {
   const progress =
     status.progress != null
       ? `<div class="whisper-progress" role="progressbar" aria-valuenow="${status.progress}" aria-valuemin="0" aria-valuemax="100">
-          <div class="whisper-progress-bar" style="width:${status.progress}%"></div>
+          <div class="whisper-progress-bar" style="width:${clampPercent(status.progress)}%"></div>
         </div>
         <p class="whisper-progress-label">${status.progress}%</p>`
       : '';
