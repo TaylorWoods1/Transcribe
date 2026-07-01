@@ -4,6 +4,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     sessionStorage.setItem('tiger-coi-reload', '1');
     localStorage.setItem('tiger-deploy-id', 'dev');
+    localStorage.setItem('tiger-install-prompt-dismissed', '1');
   });
 });
 
@@ -59,5 +60,23 @@ test.describe('Tiger PWA smoke', () => {
       return !!reg || !!(await navigator.serviceWorker.register(swUrl));
     });
     expect(registered).toBeTruthy();
+  });
+});
+
+test.describe('Install prompt', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      sessionStorage.setItem('tiger-coi-reload', '1');
+      localStorage.setItem('tiger-deploy-id', 'dev');
+      localStorage.removeItem('tiger-install-prompt-dismissed');
+    });
+  });
+
+  test('shows add to home screen guide in browser', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#install-prompt')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: /Install Tiger/i })).toBeVisible();
+    await page.locator('#install-prompt-got-it').click();
+    await expect(page.locator('#install-prompt')).toHaveCount(0);
   });
 });
