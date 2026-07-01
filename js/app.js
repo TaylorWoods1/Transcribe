@@ -1251,6 +1251,7 @@ async function init() {
 
   await refreshHome();
   scheduleWhisperWarm();
+  document.documentElement.dataset.appReady = '1';
 }
 
 init();
