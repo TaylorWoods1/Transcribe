@@ -34,9 +34,11 @@ import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import {
   clearCoiReloadAttempts,
+  getCoiReloadAttempts,
   recordCoiReloadAttempt,
   reloadForCrossOriginIsolation,
   shouldAutoReloadForCoi,
+  syncCrossOriginIsolation,
 } from './lib/coi-reload.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml, getLiveCaptureTiming } from './runtime.js';
 import { enforcePwaInstall } from './install-prompt.js';
@@ -1054,7 +1056,13 @@ function renderSettings() {
       btn.textContent = 'Reloading…';
     }
     showToast('Clearing cache and reloading for multi-thread WASM…', 'info', 3500);
-    await reloadForCrossOriginIsolation({ clearCaches: true, cacheBust: true, resetAttempts: true });
+    const degradeCoep = getCoiReloadAttempts() >= 1;
+    await reloadForCrossOriginIsolation({
+      clearCaches: true,
+      cacheBust: true,
+      resetAttempts: true,
+      degradeCoep,
+    });
   });
 }
 
@@ -1158,16 +1166,17 @@ async function ensureCrossOriginIsolation() {
     return true;
   }
 
-  if (!navigator.serviceWorker.controller) {
-    return true;
-  }
+  if (!navigator.serviceWorker.controller) return true;
 
-  if (!shouldAutoReloadForCoi()) {
-    return true;
-  }
+  const state = syncCrossOriginIsolation();
+  if (state !== 'reload' || !shouldAutoReloadForCoi()) return true;
 
   recordCoiReloadAttempt();
-  await reloadForCrossOriginIsolation({ clearCaches: true, cacheBust: true });
+  await reloadForCrossOriginIsolation({
+    clearCaches: true,
+    cacheBust: true,
+    degradeCoep: getCoiReloadAttempts() > 1,
+  });
   return false;
 }
 

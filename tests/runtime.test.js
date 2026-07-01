@@ -20,9 +20,16 @@ describe('runtime', () => {
     ).toBe(false);
   });
 
-  it('uses require-corp COEP on Safari and credentialless elsewhere', () => {
-    expect(getExpectedCoepMode('Version/18.0 Safari/604.1')).toBe('require-corp');
-    expect(getExpectedCoepMode('Chrome/131.0.0.0')).toBe('credentialless');
+  it('reports active COEP mode from session storage', () => {
+    const map = new Map();
+    const session = {
+      getItem: (k) => (map.has(k) ? map.get(k) : null),
+      setItem: (k, v) => map.set(k, v),
+      removeItem: (k) => map.delete(k),
+    };
+    expect(getExpectedCoepMode(session)).toBe('credentialless');
+    session.setItem('tiger-coi-coep-mode', 'require-corp');
+    expect(getExpectedCoepMode(session)).toBe('require-corp');
   });
 
   it('uses shorter live chunks when multi-thread WASM is unavailable', () => {

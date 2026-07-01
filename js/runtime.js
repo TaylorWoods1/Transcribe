@@ -2,14 +2,15 @@
  * Runtime capability detection for on-device inference on iOS / browsers.
  */
 import { CONFIG } from '../config.js';
+import { getActiveCoepModeLabel } from './lib/coi-reload.js';
 import { escapeHtml } from './lib/utils.js';
 
 export function isWebKitSafari(ua = navigator.userAgent || '') {
   return /Safari/i.test(ua) && !/Chrome|CriOS|Chromium|EdgiOS|FxiOS/i.test(ua);
 }
 
-export function getExpectedCoepMode(ua = navigator.userAgent || '') {
-  return isWebKitSafari(ua) ? 'require-corp' : 'credentialless';
+export function getExpectedCoepMode(session = sessionStorage) {
+  return getActiveCoepModeLabel(session);
 }
 
 export function isServiceWorkerControlling() {
@@ -96,7 +97,7 @@ function buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU,
   if (!crossOriginIsolated) {
     if (isIOS && isWebKitSafari()) {
       notes.push(
-        'Safari uses require-corp isolation (credentialless is unsupported). Open Tiger from your home screen icon and reload once — multi-thread WASM should turn on.'
+        'Tiger tries credentialless COEP first (iOS 17.4+), then require-corp. Open from your home screen icon and tap “Reload to enable threading” — you may need two reloads.'
       );
     } else if (!isServiceWorkerControlling()) {
       notes.push(
@@ -156,7 +157,7 @@ export function renderRuntimeCapabilitiesHtml(caps = getRuntimeCapabilities()) {
     ['Device memory', caps.memoryGb != null ? `${caps.memoryGb} GB (reported)` : 'unknown'],
     ['PWA installed', caps.isStandalone ? 'Yes' : 'No'],
     ['Service worker', swControlling ? 'Controlling' : 'Not controlling'],
-    ['COEP mode (expected)', coepMode],
+    ['COEP mode (active)', coepMode],
     ['Cross-origin isolated', caps.crossOriginIsolated ? 'Yes' : 'No'],
     ['SharedArrayBuffer', caps.hasSharedArrayBuffer ? 'Yes' : 'No'],
     ['Multi-thread WASM', caps.canMultiThreadWasm ? `Yes (${caps.wasmThreads} threads)` : 'No'],
