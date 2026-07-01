@@ -1,17 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   getInstallSteps,
-  shouldShowInstallPrompt,
+  requiresPwaInstall,
 } from '../js/install-prompt.js';
-import { STORAGE_KEYS } from '../js/lib/storage-keys.js';
-
-function createMemoryStorage() {
-  const map = new Map();
-  return {
-    getItem: (k) => (map.has(k) ? map.get(k) : null),
-    setItem: (k, v) => map.set(k, v),
-  };
-}
 
 describe('install-prompt', () => {
   it('returns iOS-specific steps', () => {
@@ -25,26 +16,21 @@ describe('install-prompt', () => {
     expect(steps[0].title).toContain('menu');
   });
 
-  it('hides when already installed', () => {
-    const storage = createMemoryStorage();
-    expect(shouldShowInstallPrompt({ isStandalone: true }, storage, storage)).toBe(false);
+  it('does not require install when already standalone', () => {
+    expect(requiresPwaInstall({ isStandalone: true, isIOS: true })).toBe(false);
   });
 
-  it('hides when dismissed permanently', () => {
-    const storage = createMemoryStorage();
-    storage.setItem(STORAGE_KEYS.INSTALL_PROMPT_DISMISSED, '1');
-    expect(shouldShowInstallPrompt({ isStandalone: false }, storage, storage)).toBe(false);
+  it('requires install on iOS browser', () => {
+    expect(requiresPwaInstall({ isStandalone: false, isIOS: true })).toBe(true);
   });
 
-  it('shows in browser when not dismissed', () => {
-    const storage = createMemoryStorage();
-    expect(shouldShowInstallPrompt({ isStandalone: false }, storage, storage)).toBe(true);
+  it('requires install on Android browser', () => {
+    expect(requiresPwaInstall({ isStandalone: false, platform: 'android' })).toBe(true);
   });
 
-  it('hides for this session after seen', () => {
-    const local = createMemoryStorage();
-    const session = createMemoryStorage();
-    session.setItem(STORAGE_KEYS.INSTALL_PROMPT_SEEN, '1');
-    expect(shouldShowInstallPrompt({ isStandalone: false }, local, session)).toBe(false);
+  it('does not require install on desktop browser', () => {
+    expect(requiresPwaInstall({ isStandalone: false, isIOS: false, platform: 'desktop' })).toBe(
+      false
+    );
   });
 });

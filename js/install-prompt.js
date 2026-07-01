@@ -1,49 +1,32 @@
 import { STORAGE_KEYS } from './lib/storage-keys.js';
 
-const DISMISSED_KEY = STORAGE_KEYS.INSTALL_PROMPT_DISMISSED;
-const SEEN_KEY = STORAGE_KEYS.INSTALL_PROMPT_SEEN;
 const STEP_INTERVAL_MS = 2800;
 
-function isStandaloneMode() {
+export function isPwaInstalled() {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches ||
     window.navigator.standalone === true
   );
 }
 
-function isDismissed() {
-  try {
-    return localStorage.getItem(DISMISSED_KEY) === '1';
-  } catch {
+function getInstallPlatform(capabilities) {
+  if (capabilities.platform === 'ios' || capabilities.platform === 'android') {
+    return capabilities.platform;
+  }
+  if (capabilities.isIOS) return 'ios';
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  if (/Android/i.test(ua)) return 'android';
+  return 'desktop';
+}
+
+export function requiresPwaInstall(capabilities = {}) {
+  if (capabilities.isStandalone === true) return false;
+  if (capabilities.isStandalone !== false && typeof window !== 'undefined' && isPwaInstalled()) {
     return false;
   }
-}
-
-function markSeen() {
-  try {
-    sessionStorage.setItem(SEEN_KEY, '1');
-  } catch {
-    /* private browsing */
-  }
-}
-
-function wasSeenThisSession() {
-  try {
-    return sessionStorage.getItem(SEEN_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function dismiss(permanent) {
-  if (permanent) {
-    try {
-      localStorage.setItem(DISMISSED_KEY, '1');
-    } catch {
-      /* private browsing */
-    }
-  }
-  markSeen();
+  const platform = getInstallPlatform(capabilities);
+  return platform === 'ios' || platform === 'android';
 }
 
 function getSteps(platform) {
@@ -61,7 +44,7 @@ function getSteps(platform) {
       },
       {
         title: 'Open from your icon',
-        body: 'Launch Tiger from the home screen for the best experience.',
+        body: 'Close Safari and launch Tiger from your home screen — browser tabs cannot run Tiger.',
         icon: 'home',
       },
     ];
@@ -80,7 +63,7 @@ function getSteps(platform) {
     },
     {
       title: 'Open from your icon',
-      body: 'Launch Tiger from your home screen or app drawer.',
+      body: 'Launch Tiger from your home screen or app drawer — browser tabs cannot run Tiger.',
       icon: 'home',
     },
   ];
@@ -116,9 +99,8 @@ function buildMarkup(platform) {
     .join('');
 
   return `
-    <div class="install-prompt-backdrop"></div>
-    <div class="install-prompt-card" role="dialog" aria-modal="true" aria-labelledby="install-prompt-title">
-      <button type="button" class="install-prompt-close" data-install-close aria-label="Close install guide">×</button>
+    <div class="install-prompt-backdrop" aria-hidden="true"></div>
+    <div class="install-prompt-card" role="alertdialog" aria-modal="true" aria-labelledby="install-prompt-title" aria-describedby="install-prompt-desc">
       <div class="install-prompt-body">
         <div class="install-prompt-visual" aria-hidden="true">
           <div class="install-phone">
@@ -135,14 +117,14 @@ function buildMarkup(platform) {
           </div>
         </div>
         <div class="install-prompt-copy">
-          <h2 id="install-prompt-title">Install Tiger on your device</h2>
-          <p>Tiger works best as an installed app — especially for iPhone Whisper transcription and offline sessions.</p>
+          <h2 id="install-prompt-title">Install Tiger to continue</h2>
+          <p id="install-prompt-desc">Tiger only runs as an installed app. Add it to your home screen, then open Tiger from that icon — not from a browser tab.</p>
         </div>
         <ol class="install-steps">${stepMarkup}</ol>
       </div>
       <div class="install-prompt-actions">
-        <button type="button" class="btn btn-primary" data-install-ok>Got it</button>
-        <button type="button" class="btn btn-ghost" data-install-never>Don't show again</button>
+        <p class="install-prompt-note">After installing, open Tiger from your home screen.</p>
+        <button type="button" class="btn btn-primary" data-install-reload>I've installed — check again</button>
       </div>
     </div>
   `;
@@ -163,78 +145,75 @@ function startStepHighlight(overlay) {
   return () => window.clearInterval(timer);
 }
 
+function mountInstallGate(platform) {
+  if (document.getElementById('install-prompt')) return;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'install-prompt';
+  overlay.className = 'install-prompt-overlay install-prompt-required';
+  overlay.innerHTML = buildMarkup(platform);
+  document.body.appendChild(overlay);
+  document.body.classList.add('install-prompt-open', 'install-required');
+
+  const stopHighlight = startStepHighlight(overlay);
+  overlay.querySelector('[data-install-reload]')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  const onStandalone = () => {
+    if (!isPwaInstalled()) return;
+    stopHighlight();
+    overlay.remove();
+    document.body.classList.remove('install-prompt-open', 'install-required');
+    window.removeEventListener('visibilitychange', onStandalone);
+    window.removeEventListener('pageshow', onStandalone);
+    window.location.reload();
+  };
+
+  window.addEventListener('visibilitychange', onStandalone);
+  window.addEventListener('pageshow', onStandalone);
+
+  return stopHighlight;
+}
+
 export function getInstallSteps(isIOS) {
   return getSteps(isIOS ? 'ios' : 'android');
 }
 
-export function shouldShowInstallPrompt({ isStandalone }, localStorage, sessionStorage) {
-  if (isStandalone) return false;
-  try {
-    if (localStorage.getItem(DISMISSED_KEY) === '1') return false;
-    if (sessionStorage.getItem(SEEN_KEY) === '1') return false;
-  } catch {
-    return false;
-  }
-  return true;
-}
-
-function getInstallPlatform(capabilities) {
-  if (capabilities.platform === 'ios' || capabilities.platform === 'android') {
-    return capabilities.platform;
-  }
-  if (capabilities.isIOS) return 'ios';
-  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
-  if (/Android/i.test(ua)) return 'android';
-  return 'desktop';
+/** @deprecated Use requiresPwaInstall */
+export function shouldShowInstallPrompt({ isStandalone }, _localStorage, _sessionStorage) {
+  return !isStandalone;
 }
 
 /**
- * @param {{ platform?: 'ios' | 'android' | 'desktop', isIOS?: boolean }} capabilities
+ * Blocks the app in mobile browsers until Tiger is opened as an installed PWA.
+ * @param {{ platform?: 'ios' | 'android' | 'desktop', isIOS?: boolean, isStandalone?: boolean }} capabilities
+ * @returns {boolean} true when the install gate is active
  */
-export function scheduleInstallPrompt(capabilities) {
+export function enforcePwaInstall(capabilities) {
+  if (!requiresPwaInstall(capabilities)) return false;
+
   const platform = getInstallPlatform(capabilities);
-  if (isStandaloneMode() || isDismissed() || wasSeenThisSession()) return;
-  if (platform !== 'ios' && platform !== 'android') return;
-
-  const mount = () => {
-    if (document.getElementById('install-prompt')) return;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'install-prompt';
-    overlay.className = 'install-prompt-overlay';
-    overlay.innerHTML = buildMarkup(platform);
-    document.body.appendChild(overlay);
-    document.body.classList.add('install-prompt-open');
-
-    const stopHighlight = startStepHighlight(overlay);
-    let closed = false;
-
-    const close = (permanent) => {
-      if (closed) return;
-      closed = true;
-      stopHighlight();
-      dismiss(permanent);
-      overlay.remove();
-      document.body.classList.remove('install-prompt-open');
-    };
-
-    overlay.querySelector('[data-install-close]')?.addEventListener('click', () => close(false));
-    overlay.querySelector('[data-install-ok]')?.addEventListener('click', () => close(false));
-    overlay.querySelector('[data-install-never]')?.addEventListener('click', () => close(true));
-    overlay.querySelector('.install-prompt-backdrop')?.addEventListener('click', () => close(false));
-  };
+  const mount = () => mountInstallGate(platform);
 
   requestAnimationFrame(() => {
     requestAnimationFrame(mount);
   });
+
+  return true;
+}
+
+/** @deprecated Use enforcePwaInstall */
+export function scheduleInstallPrompt(capabilities) {
+  enforcePwaInstall(capabilities);
 }
 
 export function resetInstallPromptForTests() {
   document.getElementById('install-prompt')?.remove();
-  document.body.classList.remove('install-prompt-open');
+  document.body.classList.remove('install-prompt-open', 'install-required');
   try {
-    localStorage.removeItem(DISMISSED_KEY);
-    sessionStorage.removeItem(SEEN_KEY);
+    localStorage.removeItem(STORAGE_KEYS.INSTALL_PROMPT_DISMISSED);
+    sessionStorage.removeItem(STORAGE_KEYS.INSTALL_PROMPT_SEEN);
   } catch {
     /* ignore */
   }

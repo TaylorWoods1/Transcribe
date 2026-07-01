@@ -33,7 +33,7 @@ import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings,
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml } from './runtime.js';
-import { scheduleInstallPrompt } from './install-prompt.js';
+import { enforcePwaInstall } from './install-prompt.js';
 import {
   STORAGE_KEYS,
   migrateStorageKeys,
@@ -1169,13 +1169,14 @@ async function init() {
   if (await migrateDeployRelease()) return;
   if (!(await ensureCrossOriginIsolation())) return;
   loadTheme();
+  await registerServiceWorker();
+
+  if (enforcePwaInstall(getRuntimeCapabilities())) return;
+
   initUi();
   navigate('home');
   setupTabs();
   setupKeyboardShortcuts();
-  await registerServiceWorker();
-
-  scheduleInstallPrompt(getRuntimeCapabilities());
 
   document.getElementById('main')?.addEventListener('click', (e) => {
     const newBtn = e.target.closest('#btn-new, #btn-new-empty');
