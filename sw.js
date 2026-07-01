@@ -1,4 +1,5 @@
-const CACHE = 'tiger-scribe-v15';
+const DEPLOY_ID = '26dfd16';
+const CACHE = `tiger-scribe-${DEPLOY_ID}`;
 
 /** Single source of truth for CSP — injected as HTTP header only (not meta). */
 const CSP =
@@ -149,7 +150,7 @@ self.addEventListener('activate', (event) => {
       .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
       .then((clients) => {
         for (const client of clients) {
-          client.postMessage({ type: 'sw-activated', cache: CACHE });
+          client.postMessage({ type: 'sw-activated', deployId: DEPLOY_ID });
         }
       })
   );

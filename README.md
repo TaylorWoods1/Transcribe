@@ -100,7 +100,7 @@ scripts/                Dev scripts (icon generation)
 
 ## Deployment
 
-Pushes to `main` run **CI** (lint + unit + E2E) then deploy to **`gh-pages`** via GitHub Actions.
+Pushes to `main` run **CI** (lint + unit + E2E), **stamp a deploy id** (git SHA) for cache busting, then deploy to **`gh-pages`** via GitHub Actions.
 
 ## Disclaimer
 

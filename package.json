@@ -11,6 +11,7 @@
     "lint": "eslint js tests e2e",
     "lint:fix": "eslint js tests e2e --fix",
     "generate:icons": "node scripts/generate-icons.mjs",
+    "stamp:deploy": "node scripts/stamp-deploy-version.mjs",
     "check": "npm run lint && npm run test && npm run test:e2e"
   },
   "devDependencies": {
