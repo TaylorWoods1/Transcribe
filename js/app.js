@@ -13,7 +13,7 @@ import {
 } from './db.js';
 import { AudioRecorder, AudioPlayer } from './audio.js';
 import { LiveTranscriber, isLiveTranscriptionSupported } from './transcribe-live.js';
-import { transcribeBlob, transcribeFile } from './transcribe-whisper.js';
+import { transcribeBlob, transcribeFile, downloadWhisperModel, subscribeWhisperStatus, getWhisperStatus, updateWhisperStatusPanel, renderWhisperStatusHtml } from './transcribe-whisper.js';
 import { DiarizationTracker } from './diarize.js';
 import { generateNotesFromSegments } from './notes.js';
 import { extractActions, toggleAction, updateActionText, deleteAction, addAction } from './actions.js';
@@ -54,6 +54,7 @@ let activeSegmentId = null;
 let transcriptFilter = '';
 /** View to return to from settings (home | session) */
 let returnView = 'home';
+let whisperStatusUnsubscribe = null;
 
 function getActiveView() {
   const active = document.querySelector('.view.active');
@@ -62,6 +63,10 @@ function getActiveView() {
 
 function navigate(view, { skipReturn = false } = {}) {
   const from = getActiveView();
+  if (from === 'settings' && view !== 'settings' && whisperStatusUnsubscribe) {
+    whisperStatusUnsubscribe();
+    whisperStatusUnsubscribe = null;
+  }
   if (!skipReturn && view === 'settings' && from !== 'settings') {
     returnView = from;
   }
@@ -516,14 +521,18 @@ async function runEnhancedTranscription() {
   const progressEl = document.getElementById('enhance-progress');
   if (progressEl) {
     progressEl.hidden = false;
-    progressEl.textContent = 'Loading Whisper model… (first run downloads ~40MB)';
+    progressEl.textContent = 'Preparing Whisper model…';
   }
   try {
     const segments = await transcribeBlob(currentEncounter.audioBlob, {
       language: currentEncounter.settings.language,
       onProgress: (p) => {
-        if (progressEl && p.progress != null) {
-          progressEl.textContent = `Loading model: ${Math.round(p.progress)}%`;
+        if (!progressEl) return;
+        if (p.status === 'loading' || p.status === 'progress') {
+          progressEl.textContent =
+            p.progress != null ? `Loading model: ${Math.round(p.progress)}%` : 'Loading Whisper model…';
+        } else if (getWhisperStatus().state === 'transcribing') {
+          progressEl.textContent = 'Transcribing audio… keep the app open';
         }
       },
     });
@@ -614,8 +623,14 @@ async function extractEncounterActions() {
 }
 
 function renderSettings() {
+  if (whisperStatusUnsubscribe) {
+    whisperStatusUnsubscribe();
+    whisperStatusUnsubscribe = null;
+  }
+
   const settings = getAppSettings();
   const ai = getAiSettings();
+  const whisperStatus = getWhisperStatus();
   const el = document.getElementById('view-settings');
   el.innerHTML = `
     <div class="settings-page card">
@@ -629,12 +644,20 @@ function renderSettings() {
           <input name="language" value="${escapeHtml(settings.language)}">
         </label>
         <label class="checkbox">
-          <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
-          Enable enhanced transcription (Whisper, large download)
-        </label>
-        <label class="checkbox">
           <input type="checkbox" name="darkMode" ${document.documentElement.dataset.theme === 'dark' ? 'checked' : ''}>
           Dark mode
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Enhanced transcription (Whisper)</legend>
+        <p class="muted">Runs fully on your device. Required for transcription on iPhone (live speech-to-text is not available in Safari).</p>
+        <div id="whisper-status-wrap">${renderWhisperStatusHtml(whisperStatus)}</div>
+        <div class="whisper-actions">
+          <button class="btn btn-primary" type="button" id="btn-whisper-download">Download Whisper model</button>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
+          Auto-transcribe after recording (when model is ready)
         </label>
       </fieldset>
       <fieldset>
@@ -714,6 +737,26 @@ function renderSettings() {
     }
     exportEncounter(currentEncounter, 'json');
   });
+
+  const downloadBtn = el.querySelector('#btn-whisper-download');
+  if (whisperStatus.state === 'active' || whisperStatus.state === 'cached') {
+    downloadBtn.textContent = 'Re-download model';
+  }
+  downloadBtn?.addEventListener('click', async () => {
+    downloadBtn.disabled = true;
+    try {
+      await downloadWhisperModel(() => updateWhisperStatusPanel());
+      showToast('Whisper model ready', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast(err.message || 'Whisper download failed', 'error');
+    } finally {
+      updateWhisperStatusPanel();
+      downloadBtn.disabled = ['downloading', 'transcribing'].includes(getWhisperStatus().state);
+    }
+  });
+
+  whisperStatusUnsubscribe = subscribeWhisperStatus(() => updateWhisperStatusPanel());
 }
 
 function setupTabs() {

@@ -50,7 +50,14 @@ A local-first, vanilla Progressive Web App for clinical encounter transcription,
 
 The app opens full-screen like a native app. Your data stays on the device in IndexedDB.
 
-> **iOS notes:** Live speech-to-text requires Chrome on desktop; on iOS Safari you can record audio and use **Enhanced transcription** (Whisper) or edit transcripts manually. Microphone access works in the installed PWA on iOS 16.4+.
+### Enhanced transcription (Whisper) on iPhone
+
+1. Open **Settings → Enhanced transcription (Whisper)**
+2. Tap **Download Whisper model** and wait for status **Downloaded** or **Active** (use Wi‑Fi, keep app open)
+3. Enable **Auto-transcribe after recording** if you want it to run automatically
+4. Record a session, stop, and wait for the transcript
+
+Status meanings: **Not downloaded** · **Downloading** (with %) · **Downloaded** (saved on device) · **Active** (loaded in memory) · **Transcribing** · **Error**
 
 ## Local development
 
