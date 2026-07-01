@@ -60,7 +60,8 @@ js/ui.js                               DOM rendering
 
 ## Service worker
 
-- Cache name: `tiger-scribe-v15` (bump on breaking shell changes)
+- Cache name: `tiger-scribe-{deployId}` — unique per deploy (git SHA stamped by CI)
+- **Deploy cache bust** — `npm run stamp:deploy` rewrites `deployId` in `config.js`, `sw.js`, and `?v=` query params in `index.html` before GitHub Pages publish
 - Injects **COOP/COEP** and **Content-Security-Policy** HTTP headers on HTML (required for Safari WASM)
 - Strips any legacy `<meta>` CSP from cached HTML to prevent dual-policy blocks
 - **Network-first** for HTML; install wipes all prior caches

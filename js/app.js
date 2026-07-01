@@ -1090,11 +1090,12 @@ function setupKeyboardShortcuts() {
   });
 }
 
-function migrateAppVersion() {
-  const versionKey = 'tiger-app-version';
-  const prev = localStorage.getItem(versionKey);
-  if (prev === CONFIG.version) return;
-  localStorage.setItem(versionKey, CONFIG.version);
+async function migrateDeployRelease() {
+  const prevDeploy = localStorage.getItem(STORAGE_KEYS.DEPLOY_ID);
+  const deployChanged = prevDeploy !== null && prevDeploy !== CONFIG.deployId;
+
+  localStorage.setItem(STORAGE_KEYS.DEPLOY_ID, CONFIG.deployId);
+  localStorage.setItem('tiger-app-version', CONFIG.version);
 
   const whisper = readJsonStorage(STORAGE_KEYS.WHISPER_STATUS);
   if (whisper.error || whisper.state === 'error') {
@@ -1104,50 +1105,65 @@ function migrateAppVersion() {
       error: null,
     });
   }
+
+  if (!deployChanged) return false;
+
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+  }
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  }
+  window.location.reload();
+  return true;
 }
 
-function registerServiceWorker() {
+async function registerServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
 
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'sw-activated') {
-      window.location.reload();
-    }
-  });
+  const swUrl = `./sw.js?v=${encodeURIComponent(CONFIG.deployId)}`;
+  const regs = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(
+    regs
+      .filter((reg) => {
+        const script = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '';
+        return script && !script.includes(`v=${encodeURIComponent(CONFIG.deployId)}`);
+      })
+      .map((reg) => reg.unregister())
+  );
 
-  navigator.serviceWorker
-    .register('./sw.js')
-    .then((reg) => {
-      reg.update();
-      if (reg.waiting) {
-        reg.waiting.postMessage({ type: 'skipWaiting' });
-      }
-      reg.addEventListener('updatefound', () => {
-        const worker = reg.installing;
-        worker?.addEventListener('statechange', () => {
-          if (worker.state === 'activated' && navigator.serviceWorker.controller) {
-            window.location.reload();
-          }
-        });
-      });
-
-      if (!window.crossOriginIsolated && !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)) {
-        sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
+  const hadController = !!navigator.serviceWorker.controller;
+  const reg = await navigator.serviceWorker.register(swUrl);
+  reg.update();
+  if (reg.waiting) {
+    reg.waiting.postMessage({ type: 'skipWaiting' });
+  }
+  reg.addEventListener('updatefound', () => {
+    const worker = reg.installing;
+    worker?.addEventListener('statechange', () => {
+      if (worker.state === 'activated' && hadController) {
         window.location.reload();
       }
-    })
-    .catch(() => {});
+    });
+  });
+
+  if (!window.crossOriginIsolated && !sessionStorage.getItem(STORAGE_KEYS.COI_RELOAD)) {
+    sessionStorage.setItem(STORAGE_KEYS.COI_RELOAD, '1');
+    window.location.reload();
+  }
 }
 
 async function init() {
   migrateStorageKeys();
-  migrateAppVersion();
+  if (await migrateDeployRelease()) return;
   loadTheme();
   initUi();
   navigate('home');
   setupTabs();
   setupKeyboardShortcuts();
-  registerServiceWorker();
+  await registerServiceWorker();
 
   document.getElementById('main')?.addEventListener('click', (e) => {
     const newBtn = e.target.closest('#btn-new, #btn-new-empty');

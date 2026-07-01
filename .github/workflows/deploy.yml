@@ -29,6 +29,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Stamp deploy version for cache busting
+        run: npm run stamp:deploy
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:

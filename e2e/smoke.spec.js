@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tiger-coi-reload', '1');
+    localStorage.setItem('tiger-deploy-id', 'dev');
+  });
+});
+
 test.describe('Tiger PWA smoke', () => {
   test('home page loads with app title', async ({ page }) => {
     await page.goto('/');
@@ -46,8 +53,10 @@ test.describe('Tiger PWA smoke', () => {
     await page.goto('/');
     const registered = await page.evaluate(async () => {
       if (!('serviceWorker' in navigator)) return false;
-      const reg = await navigator.serviceWorker.getRegistration('./sw.js');
-      return !!reg || !!(await navigator.serviceWorker.register('./sw.js'));
+      const { CONFIG } = await import('./config.js');
+      const swUrl = `./sw.js?v=${encodeURIComponent(CONFIG.deployId)}`;
+      const reg = await navigator.serviceWorker.getRegistration(swUrl);
+      return !!reg || !!(await navigator.serviceWorker.register(swUrl));
     });
     expect(registered).toBeTruthy();
   });
