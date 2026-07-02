@@ -377,6 +377,17 @@ body {
   flex-wrap: wrap;
   gap: 6px;
   width: 100%;
+  align-items: center;
+}
+
+.export-bar-label {
+  width: 100%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
 }
 
 /* Tabs */
@@ -724,6 +735,38 @@ body {
   gap: 10px;
   justify-content: center;
   margin-bottom: 12px;
+}
+
+/* Sticky recording controls — always reachable on iPhone while live transcript scrolls */
+.record-bar-sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 90;
+  display: flex;
+  gap: 10px;
+  padding: 12px max(var(--space-md), env(safe-area-inset-left))
+    calc(12px + env(safe-area-inset-bottom)) max(var(--space-md), env(safe-area-inset-right));
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.record-bar-sticky .btn {
+  flex: 1 1 0;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.record-bar-sticky .btn-stop-main {
+  flex: 1.4 1 0;
+  font-size: 1.05rem;
+}
+
+body.recording-active .app-main {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
 }
 
 .speaker-switch {

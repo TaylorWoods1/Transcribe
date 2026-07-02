@@ -85,6 +85,7 @@ let diarizer = null;
 let player = null;
 let recording = false;
 let paused = false;
+let stopInProgress = false;
 let timerInterval = null;
 let activeSegmentId = null;
 let transcriptFilter = '';
@@ -311,6 +312,10 @@ function renderSession() {
   }
 }
 
+function setRecordingChrome(active) {
+  document.body.classList.toggle('recording-active', active);
+}
+
 function renderRecordPanel() {
   const el = document.getElementById('panel-record');
   const status = recording ? (paused ? 'Paused' : 'Recording') : currentEncounter.audioBlob ? 'Recorded' : 'Ready';
@@ -324,9 +329,6 @@ function renderRecordPanel() {
       </div>
       <div class="record-controls">
         ${!recording ? `<button class="btn btn-record" id="btn-record" type="button" aria-label="Start recording">● Record</button>` : ''}
-        ${recording && !paused ? `<button class="btn btn-secondary" id="btn-pause" type="button">Pause</button>` : ''}
-        ${recording && paused ? `<button class="btn btn-secondary" id="btn-resume" type="button">Resume</button>` : ''}
-        ${recording ? `<button class="btn btn-danger" id="btn-stop" type="button">Stop</button>` : ''}
       </div>
       <p class="live-mode-label">${escapeHtml(getLiveModeLabel())}</p>
       <div id="live-capture-wrap">${recording ? renderLiveAssist(diarizer?.getLiveSegments() || [], currentEncounter.speakers || [], { status: liveStatus, activeSpeakerId: diarizer?.activeSpeakerId, partialId: diarizer?._partialId }) : ''}</div>
@@ -348,22 +350,21 @@ function renderRecordPanel() {
           .join('')}
         <span class="hint">Tap to switch speaker (shortcut: S)</span>
       </div>
-    </div>`;
+    </div>
+    ${
+      recording
+        ? `<div class="record-bar-sticky" role="toolbar" aria-label="Recording controls">
+        ${
+          !paused
+            ? `<button class="btn btn-secondary" id="btn-pause" type="button">Pause</button>`
+            : `<button class="btn btn-secondary" id="btn-resume" type="button">Resume</button>`
+        }
+        <button class="btn btn-danger btn-stop-main" id="btn-stop" type="button" ${stopInProgress ? 'disabled' : ''}>${stopInProgress ? 'Stopping…' : '■ Stop'}</button>
+      </div>`
+        : ''
+    }`;
 
-  el.querySelector('#btn-record')?.addEventListener('click', startRecording);
-  el.querySelector('#btn-pause')?.addEventListener('click', pauseRecording);
-  el.querySelector('#btn-resume')?.addEventListener('click', resumeRecording);
-  el.querySelector('#btn-stop')?.addEventListener('click', stopRecording);
-  el.querySelector('#btn-play')?.addEventListener('click', togglePlayback);
-  el.querySelector('#btn-enhance')?.addEventListener('click', runEnhancedTranscription);
-  el.querySelector('#import-audio')?.addEventListener('change', handleImportAudio);
-  el.querySelectorAll('[data-speaker]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      diarizer?.setActiveSpeaker(btn.dataset.speaker, { manual: true });
-      scheduleLiveUIUpdate();
-      renderRecordPanel();
-    });
-  });
+  setRecordingChrome(recording);
   if (recording) scheduleLiveUIUpdate();
 }
 
@@ -670,6 +671,10 @@ function resumeRecording() {
 }
 
 async function stopRecording() {
+  if (!recording || stopInProgress) return;
+  stopInProgress = true;
+  renderRecordPanel();
+
   clearInterval(timerInterval);
   if (liveUiTimer) {
     clearTimeout(liveUiTimer);
@@ -680,9 +685,18 @@ async function stopRecording() {
   chunkedTranscriber?.stop();
   chunkedTranscriber = null;
   vad = null;
-  const result = await recorder?.stop();
+
+  let result = null;
+  try {
+    result = await recorder?.stop();
+  } catch (err) {
+    showToast(err.message || 'Could not stop recording', 'error');
+  }
+
   recording = false;
   paused = false;
+  stopInProgress = false;
+  setRecordingChrome(false);
   liveStatus = null;
   liveAssistSegmentFingerprint = '';
   if (liveAssistAiTimer) {
@@ -1267,6 +1281,50 @@ async function init() {
     currentEncounter.title = e.target.value.trim() || 'Untitled encounter';
     document.getElementById('header-title').textContent = currentEncounter.title;
     await persist();
+  });
+
+  document.getElementById('panel-record')?.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-record')) {
+      e.preventDefault();
+      startRecording();
+      return;
+    }
+    if (e.target.closest('#btn-pause')) {
+      e.preventDefault();
+      pauseRecording();
+      return;
+    }
+    if (e.target.closest('#btn-resume')) {
+      e.preventDefault();
+      resumeRecording();
+      return;
+    }
+    if (e.target.closest('#btn-stop')) {
+      e.preventDefault();
+      stopRecording();
+      return;
+    }
+    if (e.target.closest('#btn-play')) {
+      e.preventDefault();
+      togglePlayback();
+      return;
+    }
+    if (e.target.closest('#btn-enhance')) {
+      e.preventDefault();
+      runEnhancedTranscription();
+      return;
+    }
+    const speakerBtn = e.target.closest('[data-speaker]');
+    if (speakerBtn) {
+      e.preventDefault();
+      diarizer?.setActiveSpeaker(speakerBtn.dataset.speaker, { manual: true });
+      scheduleLiveUIUpdate();
+      renderRecordPanel();
+    }
+  });
+
+  document.getElementById('panel-record')?.addEventListener('change', (e) => {
+    if (e.target.matches('#import-audio')) handleImportAudio(e);
   });
 
   document.querySelectorAll('[data-export]').forEach((btn) => {
