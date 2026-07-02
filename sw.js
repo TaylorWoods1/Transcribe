@@ -1,4 +1,4 @@
-const DEPLOY_ID = '3d50f41';
+const DEPLOY_ID = '06f4fc6';
 const CACHE = `tiger-scribe-${DEPLOY_ID}`;
 
 /** Single source of truth for CSP — injected as HTTP header only (not meta). */
@@ -37,6 +37,13 @@ const SHELL = [
   './js/lib/app-settings.js',
   './js/lib/coi-reload.js',
   './js/lib/ai-client.js',
+  './js/lib/ai/ai-settings.js',
+  './js/lib/ai/agent-harness.js',
+  './js/lib/ai/ai-tasks.js',
+  './js/lib/ai/parse.js',
+  './js/lib/ai/providers/index.js',
+  './js/lib/ai/providers/gemini.js',
+  './js/lib/ai/providers/openai-compatible.js',
   './js/lib/types.js',
   './js/export.js',
   './js/ui.js',

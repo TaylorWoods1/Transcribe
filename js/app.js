@@ -29,7 +29,8 @@ import {
 } from './transcribe-whisper.js';
 import { DiarizationTracker } from './diarize.js';
 import { extractActions, toggleAction, deleteAction, addAction } from './actions.js';
-import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi } from './ai.js';
+import { generateSoapNote, generateSummary, extractActionsWithAi, getAiSettings, saveAiSettings, hasAiConfigured, generateLiveAssistWithAi, getDefaultAiSettings } from './ai.js';
+import { AI_PROVIDER_IDS, getProviderMeta } from './lib/ai/ai-settings.js';
 import { analyzeEncounter } from './insights.js';
 import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './assist.js';
 import {
@@ -905,6 +906,7 @@ function renderSettings() {
 
   const settings = getAppSettings();
   const ai = getAiSettings();
+  const defaults = getDefaultAiSettings();
   const whisperStatus = getWhisperStatus();
   const el = document.getElementById('view-settings');
   el.innerHTML = `
@@ -963,17 +965,26 @@ function renderSettings() {
             .join('')}
         </div>
       </fieldset>
-      <fieldset>
+      <fieldset id="ai-settings-fieldset">
         <legend>AI (optional)</legend>
-        <p class="muted">Stored locally. Uses OpenAI-compatible API.</p>
-        <label>API base URL
-          <input name="baseUrl" value="${escapeHtml(ai.baseUrl || 'https://api.openai.com/v1')}" placeholder="https://api.openai.com/v1">
+        <p class="muted">Stored locally on your device. Default provider is Google Gemini.</p>
+        <label>Provider
+          <select name="provider" id="ai-provider-select" aria-label="AI provider">
+            ${AI_PROVIDER_IDS.map(
+              (id) =>
+                `<option value="${id}" ${ai.provider === id ? 'selected' : ''}>${escapeHtml(getProviderMeta(id).label)}</option>`
+            ).join('')}
+          </select>
+        </label>
+        <p class="muted" id="ai-provider-hint">${escapeHtml(getProviderMeta(ai.provider).hint)}</p>
+        <label id="ai-base-url-wrap" ${ai.provider === 'gemini' ? 'hidden' : ''}>API base URL
+          <input name="baseUrl" value="${escapeHtml(ai.baseUrl || defaults.baseUrl)}" placeholder="https://api.openai.com/v1">
         </label>
         <label>API key
-          <input name="apiKey" type="password" value="${escapeHtml(ai.apiKey || '')}" autocomplete="off">
+          <input name="apiKey" type="password" value="${escapeHtml(ai.apiKey || '')}" autocomplete="off" placeholder="${ai.provider === 'gemini' ? 'Google AI API key' : 'API key'}">
         </label>
         <label>Model
-          <input name="model" value="${escapeHtml(ai.model || 'gpt-4o-mini')}">
+          <input name="model" value="${escapeHtml(ai.model || defaults.model)}" placeholder="${escapeHtml(ai.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini')}">
         </label>
       </fieldset>
       <fieldset>
@@ -1004,6 +1015,7 @@ function renderSettings() {
     saveAppSettings(appSettings);
     if (appSettings.enhancedTranscription) scheduleWhisperWarm();
     saveAiSettings({
+      provider: fd.get('provider'),
       baseUrl: fd.get('baseUrl'),
       apiKey: fd.get('apiKey'),
       model: fd.get('model'),
@@ -1011,6 +1023,25 @@ function renderSettings() {
     document.documentElement.dataset.theme = fd.get('darkMode') === 'on' ? 'dark' : 'light';
     localStorage.setItem(STORAGE_KEYS.THEME, document.documentElement.dataset.theme);
     showToast('Settings saved', 'success');
+  });
+
+  const providerSelect = el.querySelector('#ai-provider-select');
+  const baseUrlWrap = el.querySelector('#ai-base-url-wrap');
+  const providerHint = el.querySelector('#ai-provider-hint');
+  const modelInput = el.querySelector('[name="model"]');
+  const apiKeyInput = el.querySelector('[name="apiKey"]');
+
+  providerSelect?.addEventListener('change', () => {
+    const provider = providerSelect.value;
+    const meta = getProviderMeta(provider);
+    if (providerHint) providerHint.textContent = meta.hint;
+    if (baseUrlWrap) baseUrlWrap.hidden = provider === 'gemini';
+    if (modelInput && !modelInput.value.trim()) {
+      modelInput.placeholder = provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini';
+    }
+    if (apiKeyInput) {
+      apiKeyInput.placeholder = provider === 'gemini' ? 'Google AI API key' : 'API key';
+    }
   });
 
   const persistToggle = (name, { onEnabled } = {}) => {
@@ -1329,18 +1360,6 @@ async function init() {
 
   document.getElementById('panel-record')?.addEventListener('change', (e) => {
     if (e.target.matches('#import-audio')) handleImportAudio(e);
-  });
-
-  document.querySelectorAll('[data-export]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!currentEncounter) return showToast('No session open', 'error');
-      try {
-        exportEncounter(currentEncounter, btn.dataset.export);
-        showToast(`Exported ${btn.dataset.export.toUpperCase()}`, 'success');
-      } catch (e) {
-        showToast(e.message, 'error');
-      }
-    });
   });
 
   await refreshHome();

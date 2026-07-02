@@ -372,30 +372,6 @@ body {
   font: inherit;
 }
 
-.export-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: 100%;
-  align-items: center;
-}
-
-.export-bar-label {
-  width: 100%;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: var(--text);
-  margin-bottom: 2px;
-}
-
-.export-bar-hint {
-  width: 100%;
-  margin: 0 0 8px;
-  font-size: 0.78rem;
-  line-height: 1.4;
-  color: var(--text-muted);
-}
-
 /* Tabs */
 .tabs {
   display: flex;
