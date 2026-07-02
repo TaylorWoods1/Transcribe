@@ -10,10 +10,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Tiger">
   <title>Tiger</title>
-  <link rel="manifest" href="manifest.json?v=8b26f5a">
+  <link rel="manifest" href="manifest.json?v=c4d5617">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" sizes="180x180">
-  <link rel="stylesheet" href="css/styles.css?v=8b26f5a">
+  <link rel="stylesheet" href="css/styles.css?v=c4d5617">
 </head>
 <body>
   <a href="#main" class="skip-link">Skip to content</a>
@@ -42,13 +42,14 @@
         <input type="text" id="session-title-input" class="session-title" aria-label="Encounter title" value="New encounter">
         <input type="search" id="session-search" placeholder="Search transcript…" aria-label="Search in transcript">
         <div class="export-bar" role="group" aria-label="Export encounter">
-          <span class="export-bar-label">Export</span>
-          <button class="btn btn-sm" type="button" data-export="json" title="Full session data — transcript, notes, speakers, actions">JSON</button>
-          <button class="btn btn-sm" type="button" data-export="md" title="Markdown document for notes and transcript">MD</button>
-          <button class="btn btn-sm" type="button" data-export="txt" title="Plain-text report">TXT</button>
-          <button class="btn btn-sm" type="button" data-export="srt" title="Subtitle file for video editors">SRT</button>
-          <button class="btn btn-sm" type="button" data-export="vtt" title="Web video captions">VTT</button>
-          <button class="btn btn-sm" type="button" data-export="audio" title="Download recorded audio">Audio</button>
+          <span class="export-bar-label">Download this session</span>
+          <p class="export-bar-hint">After recording — save transcript &amp; notes to your phone, or export audio.</p>
+          <button class="btn btn-sm" type="button" data-export="txt" title="Plain-text report — easiest to paste into email or records">Text</button>
+          <button class="btn btn-sm" type="button" data-export="md" title="Formatted notes + transcript">Notes</button>
+          <button class="btn btn-sm" type="button" data-export="audio" title="The recorded audio file">Audio</button>
+          <button class="btn btn-sm" type="button" data-export="json" title="Full backup — transcript, notes, speakers, actions">Backup</button>
+          <button class="btn btn-sm" type="button" data-export="srt" title="Timed subtitles for video editors">Subtitles</button>
+          <button class="btn btn-sm" type="button" data-export="vtt" title="Web video captions">Captions</button>
         </div>
       </div>
 
@@ -77,6 +78,6 @@
 
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
-  <script type="module" src="js/app.js?v=8b26f5a"></script>
+  <script type="module" src="js/app.js?v=c4d5617"></script>
 </body>
 </html>
