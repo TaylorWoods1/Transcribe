@@ -5,6 +5,15 @@ const COEP_MODE_KEY = 'tiger-coi-coep-mode';
 const RELOAD_REASON_KEY = 'tiger-coi-reload-reason';
 const MAX_AUTO_RELOADS = 3;
 
+export function isIosDevice(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  return /iPad|iPhone|iPod/.test(ua || '');
+}
+
+/** iOS Safari cannot load ONNX WASM from CDN under COEP — skip isolation on iPhone. */
+export function shouldPursueCrossOriginIsolation(ua = typeof navigator !== 'undefined' ? navigator.userAgent : '') {
+  return !isIosDevice(ua);
+}
+
 export function getCoiReloadAttempts(session = sessionStorage) {
   return parseInt(session.getItem(COI_KEY) || '0', 10);
 }
@@ -47,6 +56,11 @@ export function notifyServiceWorkerCoepMode(controller, session = sessionStorage
   });
 }
 
+/** @param {ServiceWorker | null | undefined} controller */
+export function notifyServiceWorkerCoiEnabled(controller, enabled) {
+  controller?.postMessage({ type: 'coiEnabled', value: enabled !== false });
+}
+
 /**
  * Negotiate cross-origin isolation: credentialless first, then require-corp.
  * @returns {'reload' | 'ready' | 'waiting'}
@@ -56,12 +70,20 @@ export function syncCrossOriginIsolation(session = sessionStorage) {
     return 'ready';
   }
 
+  const controller = navigator.serviceWorker.controller;
+
+  if (!shouldPursueCrossOriginIsolation()) {
+    notifyServiceWorkerCoiEnabled(controller, false);
+    return 'ready';
+  }
+
+  notifyServiceWorkerCoiEnabled(controller, true);
+
   if (window.crossOriginIsolated) {
     clearCoiReloadAttempts(session);
     return 'ready';
   }
 
-  const controller = navigator.serviceWorker.controller;
   if (!controller) return 'waiting';
 
   notifyServiceWorkerCoepMode(controller, session);
@@ -103,8 +125,13 @@ export async function reloadForCrossOriginIsolation(options = {}) {
     cacheBust = true,
     resetAttempts = false,
     degradeCoep = false,
+    disableCoi = false,
   } = options;
   if (resetAttempts) clearCoiReloadAttempts();
+
+  if (disableCoi) {
+    notifyServiceWorkerCoiEnabled(navigator.serviceWorker?.controller, false);
+  }
 
   if (degradeCoep) {
     sessionStorage.setItem(COEP_MODE_KEY, 'require-corp');

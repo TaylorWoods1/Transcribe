@@ -3,22 +3,12 @@ import { getOnnxWasmThreads } from '../js/runtime.js';
 import { CONFIG } from '../config.js';
 
 describe('getOnnxWasmThreads', () => {
-  it('caps threads to 1 on iOS when cross-origin isolated', () => {
-    expect(
-      getOnnxWasmThreads({ isIOS: true, crossOriginIsolated: true, wasmThreads: 4 })
-    ).toBe(1);
+  it('caps threads to 1 on iOS', () => {
+    expect(getOnnxWasmThreads({ isIOS: true, wasmThreads: 4 })).toBe(1);
   });
 
-  it('allows multiple threads on desktop when isolated', () => {
-    expect(
-      getOnnxWasmThreads({ isIOS: false, crossOriginIsolated: true, wasmThreads: 4 })
-    ).toBe(4);
-  });
-
-  it('uses wasmThreads on iOS without isolation', () => {
-    expect(
-      getOnnxWasmThreads({ isIOS: true, crossOriginIsolated: false, wasmThreads: 1 })
-    ).toBe(1);
+  it('allows multiple threads on desktop', () => {
+    expect(getOnnxWasmThreads({ isIOS: false, wasmThreads: 4 })).toBe(4);
   });
 });
 

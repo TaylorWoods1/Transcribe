@@ -1,4 +1,4 @@
-const DEPLOY_ID = 'd65f568';
+const DEPLOY_ID = '969b2d2';
 const CACHE = `tiger-scribe-${DEPLOY_ID}`;
 
 /** Single source of truth for CSP — injected as HTTP header only (not meta). */
@@ -48,6 +48,8 @@ const SHELL = [
 
 /** Default COEP mode — credentialless first (coi-serviceworker pattern). */
 let coepCredentialless = true;
+/** COOP/COEP injection — disabled on iOS where COEP breaks ONNX/Whisper WASM. */
+let coiEnabled = true;
 
 const META_CSP_RE = /<meta[^>]*http-equiv=["']Content-Security-Policy["'][^>]*>\s*/gi;
 
@@ -87,8 +89,10 @@ async function injectCoiHeaders(request, response) {
   }
 
   const headers = new Headers(response.headers);
-  for (const [key, value] of Object.entries(coiHeaders())) {
-    headers.set(key, value);
+  if (coiEnabled) {
+    for (const [key, value] of Object.entries(coiHeaders())) {
+      headers.set(key, value);
+    }
   }
   if (isHtml) {
     headers.set('Content-Type', 'text/html; charset=utf-8');
@@ -165,6 +169,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'coepCredentialless') {
     coepCredentialless = event.data.value !== false;
+  }
+  if (event.data?.type === 'coiEnabled') {
+    coiEnabled = event.data.value !== false;
   }
 });
 

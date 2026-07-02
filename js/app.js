@@ -35,9 +35,11 @@ import { analyzeLiveAssist, mergeAssistSuggestions, createEmptyAssist } from './
 import {
   clearCoiReloadAttempts,
   getCoiReloadAttempts,
+  notifyServiceWorkerCoiEnabled,
   recordCoiReloadAttempt,
   reloadForCrossOriginIsolation,
   shouldAutoReloadForCoi,
+  shouldPursueCrossOriginIsolation,
   syncCrossOriginIsolation,
 } from './lib/coi-reload.js';
 import { getRuntimeCapabilities, renderRuntimeCapabilitiesHtml, getLiveCaptureTiming } from './runtime.js';
@@ -926,7 +928,7 @@ function renderSettings() {
           <input type="checkbox" name="enhancedTranscription" ${settings.enhancedTranscription ? 'checked' : ''}>
           Auto-transcribe after recording
         </label>
-        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Whisper uses single-thread WASM on iPhone under cross-origin isolation (Safari CDN worker limitation).</p>
+        <p class="muted">On iPhone, also enables <strong>live chunked transcription</strong> during recording (~2.5s slices, faster after pauses). Runs single-thread WASM — required for Whisper on Safari.</p>
       </fieldset>
       ${renderRuntimeCapabilitiesHtml(getRuntimeCapabilities())}
       <fieldset>
@@ -1161,12 +1163,29 @@ async function waitForServiceWorkerControl(timeoutMs = 10000) {
 async function ensureCrossOriginIsolation() {
   if (!('serviceWorker' in navigator)) return true;
 
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) return true;
+
+  if (!shouldPursueCrossOriginIsolation()) {
+    notifyServiceWorkerCoiEnabled(controller, false);
+    if (window.crossOriginIsolated && shouldAutoReloadForCoi()) {
+      recordCoiReloadAttempt();
+      await reloadForCrossOriginIsolation({
+        clearCaches: true,
+        cacheBust: true,
+        disableCoi: true,
+      });
+      return false;
+    }
+    return true;
+  }
+
+  notifyServiceWorkerCoiEnabled(controller, true);
+
   if (window.crossOriginIsolated) {
     clearCoiReloadAttempts();
     return true;
   }
-
-  if (!navigator.serviceWorker.controller) return true;
 
   const state = syncCrossOriginIsolation();
   if (state !== 'reload' || !shouldAutoReloadForCoi()) return true;

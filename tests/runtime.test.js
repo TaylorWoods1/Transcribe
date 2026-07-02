@@ -77,8 +77,18 @@ describe('runtime', () => {
     const reason = getCoiBlockerReason({
       crossOriginIsolated: false,
       isStandalone: true,
-      isIOS: true,
+      isIOS: false,
     });
     expect(reason).toMatch(/service worker/i);
+  });
+
+  it('does not show COI reload on iOS PWA', () => {
+    expect(
+      getCoiBlockerReason({
+        crossOriginIsolated: false,
+        isStandalone: true,
+        isIOS: true,
+      })
+    ).toBeNull();
   });
 });
