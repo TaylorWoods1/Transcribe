@@ -41,13 +41,14 @@
       <div class="session-header card">
         <input type="text" id="session-title-input" class="session-title" aria-label="Encounter title" value="New encounter">
         <input type="search" id="session-search" placeholder="Search transcript…" aria-label="Search in transcript">
-        <div class="export-bar" role="group" aria-label="Export">
-          <button class="btn btn-sm" type="button" data-export="json">JSON</button>
-          <button class="btn btn-sm" type="button" data-export="md">MD</button>
-          <button class="btn btn-sm" type="button" data-export="txt">TXT</button>
-          <button class="btn btn-sm" type="button" data-export="srt">SRT</button>
-          <button class="btn btn-sm" type="button" data-export="vtt">VTT</button>
-          <button class="btn btn-sm" type="button" data-export="audio">Audio</button>
+        <div class="export-bar" role="group" aria-label="Export encounter">
+          <span class="export-bar-label">Export</span>
+          <button class="btn btn-sm" type="button" data-export="json" title="Full session data — transcript, notes, speakers, actions">JSON</button>
+          <button class="btn btn-sm" type="button" data-export="md" title="Markdown document for notes and transcript">MD</button>
+          <button class="btn btn-sm" type="button" data-export="txt" title="Plain-text report">TXT</button>
+          <button class="btn btn-sm" type="button" data-export="srt" title="Subtitle file for video editors">SRT</button>
+          <button class="btn btn-sm" type="button" data-export="vtt" title="Web video captions">VTT</button>
+          <button class="btn btn-sm" type="button" data-export="audio" title="Download recorded audio">Audio</button>
         </div>
       </div>
 
