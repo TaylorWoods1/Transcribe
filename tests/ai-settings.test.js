@@ -10,7 +10,7 @@ describe('normalizeAiSettings', () => {
   it('defaults to Gemini', () => {
     const settings = normalizeAiSettings({});
     expect(settings.provider).toBe('gemini');
-    expect(settings.model).toBe('gemini-2.0-flash');
+    expect(settings.model).toBe('gemini-2.5-flash');
   });
 
   it('migrates legacy OpenAI settings', () => {
@@ -26,6 +26,12 @@ describe('normalizeAiSettings', () => {
   it('keeps explicit provider', () => {
     expect(normalizeAiSettings({ provider: 'openai-compatible', apiKey: 'x', baseUrl: 'https://api.example.com/v1' }).provider).toBe(
       'openai-compatible'
+    );
+  });
+
+  it('migrates shut-down Gemini 2.0 models', () => {
+    expect(normalizeAiSettings({ provider: 'gemini', apiKey: 'x', model: 'gemini-2.0-flash' }).model).toBe(
+      'gemini-2.5-flash'
     );
   });
 });
