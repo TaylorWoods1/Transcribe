@@ -1,95 +1,43 @@
 /**
- * Centralized OpenAI-compatible chat/completions client.
+ * Backward-compatible re-exports for the OpenAI-compatible provider.
+ * New code should use `js/lib/ai/agent-harness.js` and `js/lib/ai/ai-settings.js`.
  */
+import { isAiConfigured, normalizeAiSettings } from './ai/ai-settings.js';
+import {
+  complete as openAiComplete,
+  normalizeBaseUrl,
+  parseJsonMessageContent,
+  extractText,
+} from './ai/providers/openai-compatible.js';
 
-const DEFAULT_MODEL = 'gpt-4o-mini';
-const MAX_ERROR_CHARS = 200;
+export { isAiConfigured, normalizeBaseUrl, parseJsonMessageContent };
 
 /**
- * @typedef {object} AiSettings
- * @property {string} [baseUrl]
- * @property {string} [apiKey]
- * @property {string} [model]
+ * @typedef {import('./ai/ai-settings.js').AiSettings} AiSettings
  */
 
 /**
+ * OpenAI-compatible chat completion — legacy entry point.
  * @param {AiSettings} settings
- * @returns {boolean}
- */
-export function isAiConfigured(settings) {
-  return !!(settings?.apiKey?.trim() && settings?.baseUrl?.trim());
-}
-
-/**
- * Validate user-supplied API base URL (HTTPS only, no credentials in URL).
- * @param {string} baseUrl
- * @returns {string}
- */
-export function normalizeBaseUrl(baseUrl) {
-  const trimmed = String(baseUrl || '').trim();
-  if (!trimmed) throw new Error('API base URL is required.');
-  let url;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    throw new Error('API base URL is not valid.');
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:' && !url.hostname.endsWith('localhost')) {
-    throw new Error('API base URL must use HTTPS.');
-  }
-  if (url.username || url.password) {
-    throw new Error('API base URL must not contain credentials.');
-  }
-  return trimmed.replace(/\/$/, '');
-}
-
-/**
- * @param {AiSettings} settings
- * @param {object} body - chat completion request body (without model if omitted)
+ * @param {object} body
  * @param {{ throwOnError?: boolean }} [options]
  * @returns {Promise<object|null>}
  */
-export async function chatCompletion(settings, body, { throwOnError = true } = {}) {
-  if (!isAiConfigured(settings)) {
-    if (throwOnError) throw new Error('AI is not configured.');
-    return null;
-  }
-
-  const baseUrl = normalizeBaseUrl(settings.baseUrl);
-  const url = `${baseUrl}/chat/completions`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey.trim()}`,
+export async function chatCompletion(settings, body, options = {}) {
+  const normalized = normalizeAiSettings({ ...settings, provider: 'openai-compatible' });
+  const messages = body.messages || [];
+  const system = messages.find((m) => m.role === 'system')?.content || '';
+  const user = messages.find((m) => m.role === 'user')?.content || '';
+  return openAiComplete(
+    normalized,
+    {
+      system,
+      user,
+      temperature: body.temperature,
+      jsonMode: body.response_format?.type === 'json_object',
     },
-    body: JSON.stringify({
-      model: settings.model || DEFAULT_MODEL,
-      ...body,
-    }),
-  });
-
-  if (!res.ok) {
-    const errText = (await res.text()).slice(0, MAX_ERROR_CHARS);
-    if (throwOnError) {
-      throw new Error(`AI request failed (${res.status}): ${errText}`);
-    }
-    return null;
-  }
-
-  return res.json();
+    options
+  );
 }
 
-/**
- * @param {object} data - chat completion response
- * @returns {object}
- */
-export function parseJsonMessageContent(data) {
-  const content = data?.choices?.[0]?.message?.content || '{}';
-  try {
-    return JSON.parse(content);
-  } catch {
-    return { summary: content, sourceSegmentIds: [] };
-  }
-}
+export { extractText };
