@@ -2,9 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { isAiConfigured, normalizeBaseUrl, parseJsonMessageContent } from '../js/lib/ai-client.js';
 
 describe('isAiConfigured', () => {
-  it('requires api key and base url', () => {
+  it('requires api key and base url for openai-compatible', () => {
     expect(isAiConfigured({})).toBe(false);
     expect(isAiConfigured({ apiKey: 'x', baseUrl: 'https://api.example.com/v1' })).toBe(true);
+  });
+
+  it('requires only api key for gemini', () => {
+    expect(isAiConfigured({ provider: 'gemini', apiKey: 'abc' })).toBe(true);
   });
 });
 
