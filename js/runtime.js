@@ -13,9 +13,9 @@ export function getExpectedCoepMode(session = sessionStorage) {
   return getActiveCoepModeLabel(session);
 }
 
-/** Thread count safe for ONNX/Whisper under COEP (Safari blocks CDN worker imports). */
-export function getOnnxWasmThreads({ isIOS, crossOriginIsolated, wasmThreads = 1 } = {}) {
-  if (isIOS && crossOriginIsolated) return 1;
+/** Thread count safe for ONNX/Whisper — always single-thread on iOS. */
+export function getOnnxWasmThreads({ isIOS, wasmThreads = 1 } = {}) {
+  if (isIOS) return 1;
   return wasmThreads;
 }
 
@@ -80,7 +80,6 @@ export function getRuntimeCapabilities() {
     /** ONNX Whisper thread count — Safari cannot load threaded workers from CDN under COEP. */
     onnxWasmThreads: getOnnxWasmThreads({
       isIOS,
-      crossOriginIsolated,
       wasmThreads: canMultiThreadWasm
         ? Math.min(CONFIG.whisperWasmThreads || 4, Math.max(1, cores || 2))
         : 1,
@@ -108,12 +107,12 @@ function estimateDeviceTier({ cores, memoryGb, canMultiThreadWasm, hasWebGPU }) 
 
 function buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU, tier }) {
   const notes = [];
-  if (!crossOriginIsolated) {
-    if (isIOS && isWebKitSafari()) {
-      notes.push(
-        'Tiger tries credentialless COEP first (iOS 17.4+), then require-corp. Open from your home screen icon and tap “Reload to enable threading” — you may need two reloads.'
-      );
-    } else if (!isServiceWorkerControlling()) {
+  if (isIOS) {
+    notes.push(
+      'Cross-origin isolation is off on iPhone — Safari blocks Whisper ONNX WASM from CDN when COEP is active. Whisper runs single-thread WASM instead.'
+    );
+  } else if (!crossOriginIsolated) {
+    if (!isServiceWorkerControlling()) {
       notes.push(
         'Service worker is not controlling this page yet — reload once so COOP/COEP headers apply (~3–4× faster WASM).'
       );
@@ -122,13 +121,8 @@ function buildNotes({ isIOS, crossOriginIsolated, canMultiThreadWasm, hasWebGPU,
         'Cross-origin isolation is off — WASM runs single-threaded (~3–4× slower). Reload after update to enable threading.'
       );
     }
-  } else if (canMultiThreadWasm && !(isIOS && crossOriginIsolated)) {
+  } else if (canMultiThreadWasm) {
     notes.push('Multi-thread WASM active — using all available CPU cores for Whisper.');
-  }
-  if (isIOS && crossOriginIsolated) {
-    notes.push(
-      'Whisper uses single-thread WASM on iPhone — Safari blocks multi-thread ONNX workers from CDN under COEP.'
-    );
   }
   if (isIOS && hasWebGPU) {
     notes.push('WebGPU is available (iOS 26+) but Whisper often runs faster on WASM on Apple Silicon.');
@@ -156,12 +150,15 @@ export async function probeWebGPU() {
 }
 
 export function getCoiBlockerReason(caps = getRuntimeCapabilities()) {
+  if (caps.isIOS) {
+    if (!caps.isStandalone) {
+      return 'Open Tiger from your home screen icon (not Safari) — browser tabs cannot enable multi-thread WASM on iPhone.';
+    }
+    return null;
+  }
   if (caps.crossOriginIsolated) return null;
   if (!isServiceWorkerControlling()) {
     return 'Service worker is not controlling this page yet. Reload once so isolation headers can apply.';
-  }
-  if (caps.isIOS && !caps.isStandalone) {
-    return 'Open Tiger from your home screen icon (not Safari) — browser tabs cannot enable multi-thread WASM on iPhone.';
   }
   return 'This page loaded without cross-origin isolation. Use the button below to fetch a fresh copy with threading enabled.';
 }

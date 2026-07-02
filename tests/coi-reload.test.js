@@ -4,8 +4,10 @@ import {
   getCoiReloadAttempts,
   getCoepCredentiallessForSw,
   getStoredCoepMode,
+  isIosDevice,
   recordCoiReloadAttempt,
   shouldAutoReloadForCoi,
+  shouldPursueCrossOriginIsolation,
   syncCrossOriginIsolation,
 } from '../js/lib/coi-reload.js';
 import { STORAGE_KEYS } from '../js/lib/storage-keys.js';
@@ -58,6 +60,12 @@ describe('coi-reload', () => {
     const controller = { postMessage: vi.fn() };
     session.setItem('tiger-coi-coep-mode', 'require-corp');
     expect(getCoepCredentiallessForSw(controller, session)).toBe(false);
+  });
+
+  it('does not pursue COI on iOS', () => {
+    expect(shouldPursueCrossOriginIsolation('iPhone')).toBe(false);
+    expect(isIosDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).toBe(true);
+    expect(shouldPursueCrossOriginIsolation('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(true);
   });
 
   it('requests credentialless reload before require-corp degrade', () => {

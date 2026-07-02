@@ -141,9 +141,12 @@ export function formatWhisperDownloadedAt(ts) {
  * @see https://github.com/huggingface/transformers.js/issues/319
  */
 export async function loadTransformersModule(cdnUrl = CONFIG.whisperCdn) {
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
   const useBlobImport =
     typeof window !== 'undefined' &&
-    window.crossOriginIsolated === true;
+    window.crossOriginIsolated === true &&
+    !isIOS;
 
   if (!useBlobImport) {
     return import(cdnUrl);
@@ -169,6 +172,9 @@ function configureTransformersEnv(env, { numThreads } = {}) {
   const wasm = env.backends?.onnx?.wasm;
   if (wasm) {
     wasm.numThreads = numThreads ?? caps.onnxWasmThreads;
+    if (caps.isIOS) {
+      wasm.proxy = true;
+    }
     if ('simd' in wasm) wasm.simd = true;
   }
 }
