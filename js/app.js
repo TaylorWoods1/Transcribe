@@ -984,7 +984,7 @@ function renderSettings() {
           <input name="apiKey" type="password" value="${escapeHtml(ai.apiKey || '')}" autocomplete="off" placeholder="${ai.provider === 'gemini' ? 'Google AI API key' : 'API key'}">
         </label>
         <label>Model
-          <input name="model" value="${escapeHtml(ai.model || defaults.model)}" placeholder="${escapeHtml(ai.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini')}">
+          <input name="model" value="${escapeHtml(ai.model || defaults.model)}" placeholder="${escapeHtml(ai.provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini')}">
         </label>
       </fieldset>
       <fieldset>
@@ -1037,7 +1037,7 @@ function renderSettings() {
     if (providerHint) providerHint.textContent = meta.hint;
     if (baseUrlWrap) baseUrlWrap.hidden = provider === 'gemini';
     if (modelInput && !modelInput.value.trim()) {
-      modelInput.placeholder = provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o-mini';
+      modelInput.placeholder = provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o-mini';
     }
     if (apiKeyInput) {
       apiKeyInput.placeholder = provider === 'gemini' ? 'Google AI API key' : 'API key';
