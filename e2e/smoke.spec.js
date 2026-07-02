@@ -53,6 +53,19 @@ test.describe('Tiger PWA smoke', () => {
     await expect(page.getByRole('tab', { name: 'Assist' })).toBeVisible();
   });
 
+  test('empty-state new session creates exactly one encounter', async ({ page }) => {
+    await waitForAppReady(page);
+    await expect(page.locator('#btn-new-empty')).toBeVisible();
+    await page.locator('#btn-new-empty').click();
+    await expect(page.getByRole('button', { name: /record/i })).toBeVisible();
+
+    const count = await page.evaluate(async () => {
+      const { listEncounters } = await import('./js/db.js');
+      return (await listEncounters()).length;
+    });
+    expect(count).toBe(1);
+  });
+
   test('settings page shows runtime and whisper panels', async ({ page }) => {
     await waitForAppReady(page);
     await page.getByRole('button', { name: /settings/i }).click();

@@ -35,7 +35,7 @@ export function showToast(message, type = 'info', duration = 3200) {
 }
 
 export function renderEncounterList(encounters, handlers = {}) {
-  const { onOpen, onDelete, onNew } = handlers;
+  const { onOpen, onDelete } = handlers;
   const root = document.getElementById('home-list');
   if (!root) return;
 
@@ -47,7 +47,6 @@ export function renderEncounterList(encounters, handlers = {}) {
         <p>Start a new session to record and transcribe a conversation.</p>
         <button class="btn btn-primary" id="btn-new-empty" type="button">New session</button>
       </div>`;
-    root.querySelector('#btn-new-empty')?.addEventListener('click', () => onNew?.());
     return;
   }
 

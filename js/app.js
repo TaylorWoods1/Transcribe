@@ -101,6 +101,7 @@ let useChunkedLive = false;
 let returnView = 'home';
 let whisperStatusUnsubscribe = null;
 let whisperWarmPromise = null;
+let newSessionInProgress = false;
 
 function scheduleWhisperWarm() {
   const settings = getAppSettings();
@@ -202,11 +203,12 @@ async function refreshHome(query = '') {
         showToast(err.message || 'Could not delete encounter', 'error');
       }
     },
-    onNew: startNewSession,
   });
 }
 
 async function startNewSession() {
+  if (newSessionInProgress) return;
+  newSessionInProgress = true;
   try {
     const settings = getAppSettings();
     currentEncounter = createEmptyEncounter({
@@ -224,6 +226,8 @@ async function startNewSession() {
   } catch (err) {
     console.error(err);
     showToast(err.message || 'Could not start session', 'error');
+  } finally {
+    newSessionInProgress = false;
   }
 }
 
