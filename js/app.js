@@ -1331,18 +1331,6 @@ async function init() {
     if (e.target.matches('#import-audio')) handleImportAudio(e);
   });
 
-  document.querySelectorAll('[data-export]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      if (!currentEncounter) return showToast('No session open', 'error');
-      try {
-        exportEncounter(currentEncounter, btn.dataset.export);
-        showToast(`Exported ${btn.dataset.export.toUpperCase()}`, 'success');
-      } catch (e) {
-        showToast(e.message, 'error');
-      }
-    });
-  });
-
   await refreshHome();
   scheduleWhisperWarm();
   document.documentElement.dataset.appReady = '1';
